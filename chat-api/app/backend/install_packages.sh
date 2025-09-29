@@ -5,12 +5,12 @@ echo "======================"
 
 # 1. 현재 디렉토리 확인
 echo "1. 현재 디렉토리 확인..."
-if [ ! -f "pyproject.toml" ]; then
-    echo "❌ pyproject.toml 파일을 찾을 수 없습니다."
+if [ ! -f "requirements.txt" ]; then
+    echo "❌ requirements.txt 파일을 찾을 수 없습니다."
     echo "올바른 프로젝트 디렉토리에서 실행해주세요."
     exit 1
 fi
-echo "✅ pyproject.toml 파일 확인 완료"
+echo "✅ requirements.txt 파일 확인 완료"
 
 # 2. 가상환경 활성화 확인
 echo -e "\n2. 가상환경 활성화 확인..."
@@ -40,8 +40,8 @@ echo "✅ pip 업그레이드 완료"
 
 # 5. 패키지 설치
 echo -e "\n5. 패키지 설치..."
-echo "pyproject.toml에서 의존성을 읽어서 설치합니다..."
-pip install -e .
+echo "requirements.txt에서 의존성을 읽어서 설치합니다..."
+pip install -r requirements.txt
 echo "✅ 패키지 설치 완료"
 
 # 6. 설치된 패키지 확인

@@ -17,11 +17,11 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements first for better caching
-COPY pyproject.toml ./
+COPY requirements.txt ./
 
 # Install Python dependencies
 RUN pip install --upgrade pip && \
-    pip install -e .
+    pip install -r requirements.txt
 
 # Production stage
 FROM python:3.12-slim as production

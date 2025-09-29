@@ -49,7 +49,7 @@ python -c "import sys; print(f'Python {sys.version_info.major}.{sys.version_info
 
 # 7. 패키지 설치
 echo -e "\n7. 패키지 설치..."
-pip install -e .
+pip install -r requirements.txt
 echo "✅ 패키지 설치 완료"
 
 # 8. 설치된 패키지 확인
