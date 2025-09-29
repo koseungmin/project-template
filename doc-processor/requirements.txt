@@ -1,0 +1,28 @@
+prefect>=2.0.0
+python-dotenv>=1.0.0
+
+# PostgreSQL 연결을 위한 패키지
+psycopg2-binary>=2.9.0  # PostgreSQL 어댑터
+sqlalchemy>=2.0.0       # ORM 및 DB 연결 관리
+
+# Milvus 벡터 데이터베이스
+pymilvus
+milvus-lite>=2.5.0
+
+# Azure OpenAI
+openai>=1.0.0
+
+# PDF 이미지 추출을 위한 라이브러리
+PyMuPDF>=1.23.0
+Pillow>=10.0.0
+pdf2image>=1.16.0
+
+# Azure AI Search를 위한 라이브러리  
+azure-search-documents>=11.4.0
+azure-identity>=1.15.0
+azure-core>=1.29.0
+
+# PDF 이미지 변환을 위한 시스템 의존성 (설치 방법 안내)
+# macOS: brew install poppler
+# Ubuntu: apt-get install poppler-utils
+# Windows: conda install -c conda-forge poppler

@@ -1,0 +1,120 @@
+name: prefect-data-pipeline-k8s
+prefect-version: 3.0.0
+
+deployments:
+  - name: file-upload-pipeline-k8s
+    entrypoint: flow/file_upload_pipeline.py:file_upload_pipeline
+    description: Kubernetes 환경에서 실행되는 파일 업로드 처리 파이프라인
+    work_pool:
+      name: k8s-pool
+      work_queue_name: default
+      type: kubernetes
+      job_template:
+        spec:
+          template:
+            spec:
+              containers:
+                - name: prefect-job
+                  image: prefect-python-app:latest
+                  workingDir: /app
+                  env:
+                    - name: PREFECT_API_URL
+                      value: "http://prefect-server:4200/api"
+                    - name: PREFECT_DISABLE_TELEMETRY
+                      value: "1"
+                    - name: MILVUS_HOST
+                      value: "milvus-standalone"
+                    - name: MILVUS_PORT
+                      value: "19530"
+                    - name: MINIO_HOST
+                      value: "milvus-minio"
+                    - name: MINIO_PORT
+                      value: "9000"
+                    - name: MINIO_ACCESS_KEY
+                      value: "minioadmin"
+                    - name: MINIO_SECRET_KEY
+                      value: "minioadmin"
+                  envFrom:
+                    - secretRef:
+                        name: prefect-secrets
+                  resources:
+                    requests:
+                      memory: "512Mi"
+                      cpu: "250m"
+                    limits:
+                      memory: "1Gi"
+                      cpu: "500m"
+                  volumeMounts:
+                    - name: shared-data
+                      mountPath: /app/data
+              volumes:
+                - name: shared-data
+                  emptyDir: {}
+              restartPolicy: Never
+              serviceAccountName: prefect-job-sa
+    parameters:
+      input_file_path: "/app/data/input_file.csv"
+      output_file_path: "/app/data/output_file.csv"
+      output_format: "csv"
+      processing_level: "basic"
+      azure_endpoint: "https://ai-wf2-openai-ue2.openai.azure.com/"
+      deployment: "text-embedding-3-large"
+      api_key: "{{ $AZURE_OPENAI_API_KEY }}"
+      api_version: "2024-12-01-preview"
+      collection_name: "k8s_collection"
+      milvus_host: "milvus-standalone"
+      milvus_port: "19530"
+    schedule:
+      cron: "0 0 1 1 *"  # 매년 1월 1일 자정 (1년에 한번)
+      timezone: "Asia/Seoul"
+    tags:
+      - "kubernetes"
+      - "production"
+      - "data-pipeline"
+
+  - name: data-pipeline-k8s
+    entrypoint: flow/data_pipeline.py:data_pipeline
+    description: Kubernetes 환경에서 실행되는 데이터 처리 파이프라인
+    work_pool:
+      name: k8s-pool
+      work_queue_name: default
+      type: kubernetes
+      job_template:
+        spec:
+          template:
+            spec:
+              containers:
+                - name: prefect-job
+                  image: prefect-python-app:latest
+                  workingDir: /app
+                  env:
+                    - name: PREFECT_API_URL
+                      value: "http://prefect-server:4200/api"
+                    - name: PREFECT_DISABLE_TELEMETRY
+                      value: "1"
+                  resources:
+                    requests:
+                      memory: "256Mi"
+                      cpu: "100m"
+                    limits:
+                      memory: "512Mi"
+                      cpu: "200m"
+                  volumeMounts:
+                    - name: shared-data
+                      mountPath: /app/data
+              volumes:
+                - name: shared-data
+                  emptyDir: {}
+              restartPolicy: Never
+              serviceAccountName: prefect-job-sa
+    parameters:
+      api_url: "https://api.example.com/data"
+      output_path: "/app/data/output.csv"
+      output_format: "csv"
+    schedule:
+      cron: "0 */6 * * *"  # 6시간마다
+      timezone: "Asia/Seoul"
+    tags:
+      - "kubernetes"
+      - "production"
+      - "data-pipeline" 

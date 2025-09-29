@@ -1,0 +1,4 @@
+# 공통 문서 모델 패키지 의존성
+sqlalchemy>=1.4.0,<2.0.0
+psycopg2-binary>=2.9.0
+python-dateutil>=2.8.0

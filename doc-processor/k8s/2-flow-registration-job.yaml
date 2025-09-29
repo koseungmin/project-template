@@ -1,0 +1,70 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flow-registration
+  namespace: prefect-system
+  labels:
+    app: flow-registration
+    stage: "2"
+spec:
+  template:
+    metadata:
+      labels:
+        app: flow-registration
+        stage: "2"
+    spec:
+      containers:
+      - name: flow-register
+        image: prefect-python-app:latest  # 실제 이미지 태그로 변경 필요
+        command: ["python", "/app/base/run_flow.py"]
+        workingDir: /app
+        env:
+        - name: PREFECT_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: prefect-config
+              key: PREFECT_API_URL
+        - name: PREFECT_DISABLE_TELEMETRY
+          valueFrom:
+            configMapKeyRef:
+              name: prefect-config
+              key: PREFECT_DISABLE_TELEMETRY
+        - name: MILVUS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: prefect-config
+              key: MILVUS_HOST
+        - name: MILVUS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: prefect-config
+              key: MILVUS_PORT
+        - name: AZURE_OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: prefect-secrets
+              key: azure-openai-api-key
+        - name: AZURE_OPENAI_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: prefect-secrets
+              key: azure-openai-endpoint
+        - name: AZURE_OPENAI_DEPLOYMENT
+          valueFrom:
+            secretKeyRef:
+              name: prefect-secrets
+              key: azure-openai-deployment
+        - name: AZURE_OPENAI_VERSION
+          valueFrom:
+            secretKeyRef:
+              name: prefect-secrets
+              key: azure-openai-version
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+      restartPolicy: Never
+      backoffLimit: 3 
