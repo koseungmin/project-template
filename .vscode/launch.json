@@ -1,0 +1,110 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "[🚀] FastAPI Backend - Development",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "python": "${workspaceFolder}/chat-api/app/backend/venv_py312/bin/python",
+            "args": [
+                "ai_backend.main:app",
+                "--host", "0.0.0.0",
+                "--port", "8000",
+                "--reload",
+                "--log-level", "info"
+            ],
+            "cwd": "${workspaceFolder}/chat-api/app/backend",
+            "console": "internalConsole",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/chat-api/app/backend:${workspaceFolder}/shared_core:${workspaceFolder}",
+                "ENV": "development"
+            },
+            "envFile": "${workspaceFolder}/chat-api/app/backend/.env",
+            "justMyCode": false
+        },
+        {
+            "name": "[🔧] Prefect Server 시작",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/doc-processor/base/start_prefect_server.py",
+            "python": "${workspaceFolder}/doc-processor/venv_py312/bin/python",
+            "console": "internalConsole",
+            "cwd": "${workspaceFolder}/doc-processor",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}/shared_core:${workspaceFolder}",
+                "PREFECT_DISABLE_TELEMETRY": "1",
+                "PREFECT_API_URL": "http://127.0.0.1:4200/api"
+            },
+            "envFile": "${workspaceFolder}/doc-processor/.env",
+            "args": [],
+            "justMyCode": false
+        },
+        {
+            "name": "[📦] Prefect 파이프라인 배포",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/doc-processor/base/deploy_pipeline.py",
+            "python": "${workspaceFolder}/doc-processor/venv_py312/bin/python",
+            "console": "internalConsole",
+            "cwd": "${workspaceFolder}/doc-processor",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}/shared_core:${workspaceFolder}",
+                "PREFECT_API_URL": "http://127.0.0.1:4200/api",
+                "PREFECT_DISABLE_TELEMETRY": "1"
+            },
+            "envFile": "${workspaceFolder}/doc-processor/.env",
+            "args": [],
+            "justMyCode": false
+        },
+        {
+            "name": "[⚡] Prefect Worker 시작",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/doc-processor/base/start_worker.py",
+            "python": "${workspaceFolder}/doc-processor/venv_py312/bin/python",
+            "console": "internalConsole",
+            "cwd": "${workspaceFolder}/doc-processor",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}/shared_core:${workspaceFolder}",
+                "PREFECT_API_URL": "http://127.0.0.1:4200/api",
+                "PREFECT_DISABLE_TELEMETRY": "1"
+            },
+            "envFile": "${workspaceFolder}/doc-processor/.env",
+            "args": [],
+            "justMyCode": false
+        },
+        {
+            "name": "[📄] 문서 처리 파이프라인 실행",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/doc-processor/run_document_pipeline.py",
+            "python": "${workspaceFolder}/doc-processor/venv_py312/bin/python",
+            "console": "internalConsole",
+            "cwd": "${workspaceFolder}/doc-processor",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}/shared_core:${workspaceFolder}",
+                "PREFECT_API_URL": "http://127.0.0.1:4200/api"
+            },
+            "envFile": "${workspaceFolder}/doc-processor/.env",
+            "args": [],
+            "justMyCode": false
+        },
+        {
+            "name": "[📦] 배치 처리 파이프라인 실행",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/doc-processor/run_batch_pipeline.py",
+            "python": "${workspaceFolder}/doc-processor/venv_py312/bin/python",
+            "console": "internalConsole",
+            "cwd": "${workspaceFolder}/doc-processor",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}/shared_core:${workspaceFolder}",
+                "PREFECT_API_URL": "http://127.0.0.1:4200/api"
+            },
+            "envFile": "${workspaceFolder}/doc-processor/.env",
+            "args": [],
+            "justMyCode": false
+        }
+    ]
+}

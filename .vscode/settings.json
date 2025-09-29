@@ -1,0 +1,62 @@
+{
+    "python.defaultInterpreterPath": "./venv/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.linting.flake8Enabled": false,
+    "python.formatting.provider": "black",
+    "python.formatting.blackArgs": ["--line-length=120"],
+    "python.sortImports.args": ["--profile", "black"],
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "explicit"
+    },
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/*.pyc": true,
+        "**/.pytest_cache": true,
+        "**/node_modules": true,
+        "**/.git": true,
+        "**/.DS_Store": true,
+        "**/venv": true,
+        "**/.venv": true,
+        "**/*.egg-info": true
+    },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/bower_components": true,
+        "**/*.code-search": true,
+        "**/__pycache__": true,
+        "**/*.pyc": true,
+        "**/venv": true,
+        "**/.venv": true,
+        "**/*.egg-info": true
+    },
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}",
+        "${workspaceFolder}/shared_core",
+        "${workspaceFolder}/chat-api/app/backend",
+        "${workspaceFolder}/doc-processor"
+    ],
+    "python.envFile": "${workspaceFolder}/.env",
+    "files.associations": {
+        "*.yaml": "yaml",
+        "*.yml": "yaml",
+        "Dockerfile*": "dockerfile",
+        "*.env*": "dotenv"
+    },
+    "yaml.schemas": {
+        "https://json.schemastore.org/github-workflow.json": "/.github/workflows/*",
+        "https://json.schemastore.org/kustomization.json": "/k8s/**/kustomization.yaml"
+    },
+    "git.ignoreLimitWarning": true,
+    "terminal.integrated.env.osx": {
+        "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/shared_core:${workspaceFolder}/chat-api/app/backend:${workspaceFolder}/doc-processor"
+    },
+    "terminal.integrated.env.linux": {
+        "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/shared_core:${workspaceFolder}/chat-api/app/backend:${workspaceFolder}/doc-processor"
+    },
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "${workspaceFolder};${workspaceFolder}\\shared_core;${workspaceFolder}\\chat-api\\app\\backend;${workspaceFolder}\\doc-processor"
+    }
+}

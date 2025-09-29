@@ -1,0 +1,299 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Install Backend Dependencies",
+            "type": "shell",
+            "command": "pip",
+            "args": [
+                "install", 
+                "-r", 
+                "${workspaceFolder}/chat-api/app/backend/requirements.txt"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/chat-api/app/backend"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Install Prefect Dependencies",
+            "type": "shell",
+            "command": "pip",
+            "args": [
+                "install", 
+                "-r", 
+                "${workspaceFolder}/doc-processor/requirements.txt"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/doc-processor"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Install Shared Dependencies",
+            "type": "shell",
+            "command": "pip",
+            "args": [
+                "install", 
+                "-r", 
+                "${workspaceFolder}/shared_core/requirements.txt"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/shared_core"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Install All Dependencies",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Install Shared Dependencies",
+                "Install Backend Dependencies", 
+                "Install Prefect Dependencies"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Start FastAPI Backend",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-m", 
+                "uvicorn", 
+                "ai_backend.main:app",
+                "--host", "0.0.0.0",
+                "--port", "8000",
+                "--reload"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "dedicated",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/chat-api/app/backend",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/chat-api/app/backend:${workspaceFolder}"
+                }
+            },
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "python",
+                "fileLocation": "absolute",
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            }
+        },
+        {
+            "label": "Start Prefect Server",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "base/start_prefect_server.py"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "dedicated",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/doc-processor",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}"
+                }
+            },
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Start Prefect Worker",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "base/start_worker.py"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "dedicated",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/doc-processor",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}"
+                }
+            },
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Deploy Prefect Pipeline",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "base/deploy_pipeline.py"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/doc-processor",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}"
+                }
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Document Processing",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "run_document_pipeline.py"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/doc-processor",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}"
+                }
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Batch Processing",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "run_batch_pipeline.py"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/doc-processor",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}"
+                }
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Search Documents",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "run_search.py",
+                "${input:searchQuery}"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/doc-processor",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}"
+                }
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Setup Development Environment",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Install All Dependencies",
+                "Deploy Prefect Pipeline"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Start All Services",
+            "dependsOrder": "parallel",
+            "dependsOn": [
+                "Start FastAPI Backend",
+                "Start Prefect Server",
+                "Start Prefect Worker"
+            ],
+            "group": "test"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "searchQuery",
+            "description": "검색할 키워드를 입력하세요",
+            "default": "검색어",
+            "type": "promptString"
+        }
+    ]
+}
