@@ -186,6 +186,45 @@ def update_document_processing_status(doc_id: str, status: str, **kwargs):
         logger.error(f"❌ 문서 처리 상태 업데이트 실패: {str(e)}")
         raise
 
+@task(name="업데이트_작업_진행률")
+def update_job_progress(job_id: str, current_step: str, completed_steps: int = None, additional_data: dict = None):
+    """작업 진행률 실시간 업데이트"""
+    logger = get_run_logger()
+    
+    try:
+        with next(get_db_session()) as session:
+            job_service = ProcessingJobService(session)
+            
+            # 업데이트할 데이터 준비
+            update_data = {
+                "current_step": current_step,
+                "updated_at": datetime.utcnow()
+            }
+            
+            if completed_steps is not None:
+                update_data["completed_steps"] = completed_steps
+            
+            if additional_data:
+                update_data.update(additional_data)
+            
+            success = job_service.update_job_status(job_id, "running", **update_data)
+            
+            if success:
+                progress_percent = 0
+                if completed_steps is not None:
+                    # total_steps는 4로 고정 (텍스트 추출, 이미지 캡처, GPT 설명, Vector DB)
+                    progress_percent = (completed_steps / 4) * 100
+                logger.info(f"📊 작업 진행률 업데이트: {job_id} - {current_step} ({progress_percent:.0f}%)")
+            else:
+                logger.warning(f"⚠️ 작업 진행률 업데이트 실패: {job_id}")
+            
+            return success
+            
+    except Exception as e:
+        logger.error(f"❌ 작업 진행률 업데이트 실패: {str(e)}")
+        # 진행률 업데이트 실패가 전체 파이프라인을 중단시키지 않도록 예외를 삼킴
+        return False
+
 @task(name="완료_처리_작업")
 def complete_processing_job(job_id: str, success_count: int, total_count: int, error_message: str = None):
     """처리 작업 완료"""
@@ -198,18 +237,25 @@ def complete_processing_job(job_id: str, success_count: int, total_count: int, e
                 raise ValueError(f"처리 작업을 찾을 수 없습니다: {job_id}")
             
             # 작업 상태 업데이트
-            job.job_status = "completed" if error_message is None else "failed"
+            job.status = "completed" if error_message is None else "failed"
             job.completed_at = datetime.utcnow()
-            job.duration_seconds = int((datetime.utcnow() - job.started_at).total_seconds())
-            job.total_chunks = total_count
-            job.successful_chunks = success_count
-            job.failed_chunks = total_count - success_count
+            job.completed_steps = 4  # 모든 단계 완료
+            job.current_step = "완료" if error_message is None else f"실패: {error_message}"
+            
+            # 결과 데이터 저장
+            job.result_data = {
+                "total_chunks": total_count,
+                "successful_chunks": success_count,
+                "failed_chunks": total_count - success_count,
+                "duration_seconds": int((datetime.utcnow() - job.started_at).total_seconds()),
+                "completion_time": datetime.utcnow().isoformat()
+            }
             
             if error_message:
                 job.error_message = error_message
             
             session.commit()
-            logger.info(f"✅ 처리 작업 완료: {job_id}")
+            logger.info(f"✅ 처리 작업 완료: {job_id} - 성공: {success_count}/{total_count} 청크")
             
     except Exception as e:
         logger.error(f"❌ 처리 작업 완료 처리 실패: {str(e)}")
@@ -917,30 +963,63 @@ def document_processing_pipeline(document_path: str, skip_image_processing: bool
     
     try:
         # 1단계: 텍스트 추출
+        if job_id:
+            update_job_progress(job_id, "텍스트 추출 시작", 0)
+        
         logger.info("📄 1단계: 텍스트 추출 시작")
         text_result = extract_text_from_document(document_path, max_pages)
+        
+        if job_id:
+            update_job_progress(job_id, f"텍스트 추출 완료 - {text_result['total_pages']}페이지", 1, 
+                              {"extracted_pages": text_result['total_pages']})
         
         if skip_image_processing:
             # 이미지 처리 건너뛰기
             logger.info("⏭️ 2-3단계: 이미지 처리 건너뛰기")
             image_result = {"image_paths": []}
             description_result = {"image_descriptions": {}, "total_images": 0}
+            
+            if job_id:
+                update_job_progress(job_id, "이미지 처리 건너뛰기", 3)
+                
         else:
             # 2단계: 페이지별 이미지 캡처
+            if job_id:
+                update_job_progress(job_id, "페이지별 이미지 캡처 시작", 1)
+                
             logger.info("🖼️ 2단계: 페이지별 이미지 캡처 시작")
             image_result = capture_page_images(document_path, max_pages=max_pages)
             
+            if job_id:
+                update_job_progress(job_id, f"이미지 캡처 완료 - {len(image_result['image_paths'])}개", 2,
+                                  {"captured_images": len(image_result['image_paths'])})
+            
             # 3단계: GPT를 이용한 이미지 설명 생성
+            if job_id:
+                update_job_progress(job_id, "GPT 이미지 설명 생성 시작", 2)
+                
             logger.info("🤖 3단계: GPT 이미지 설명 생성 시작")
             description_result = generate_image_descriptions(image_result["image_paths"])
+            
+            if job_id:
+                update_job_progress(job_id, f"GPT 설명 생성 완료 - {description_result['total_images']}개", 3,
+                                  {"generated_descriptions": description_result['total_images']})
         
         # 4단계: Vector DB 구성
+        if job_id:
+            update_job_progress(job_id, "Vector DB 구성 시작 (임베딩 생성)", 3)
+            
         logger.info("🗄️ 4단계: Vector DB 구성 시작 (Azure OpenAI 임베딩)")
         vector_result = create_vector_database(
             text_result, 
             description_result, 
             document_path
         )
+        
+        if job_id:
+            update_job_progress(job_id, f"Vector DB 구성 완료 - {vector_result['total_documents']}개 벡터", 4,
+                              {"vector_documents": vector_result['total_documents'],
+                               "embedding_model": vector_result['embedding_model']})
         
         # 5단계: PostgreSQL에 청크 데이터 저장
         saved_chunks = 0

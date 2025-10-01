@@ -1,8 +1,8 @@
-# LLM 제공자 가이드 (OpenAI vs Azure OpenAI)
+# LLM 제공자 가이드 (OpenAI vs Azure OpenAI vs External API)
 
 ## 개요
 
-이제 시스템에서 **OpenAI**와 **Azure OpenAI** 두 가지 LLM 제공자를 지원합니다. 환경 변수 설정으로 쉽게 전환할 수 있습니다.
+이제 시스템에서 **OpenAI**, **Azure OpenAI**, **External API** 세 가지 LLM 제공자를 지원합니다. 환경 변수 설정으로 쉽게 전환할 수 있습니다.
 
 ## 🚀 빠른 시작
 
@@ -16,6 +16,9 @@ LLM_PROVIDER=openai
 
 # Azure OpenAI 사용  
 LLM_PROVIDER=azure_openai
+
+# External API 사용
+LLM_PROVIDER=external_api
 ```
 
 ### 2. OpenAI 설정 (기본값)
@@ -46,13 +49,59 @@ AZURE_OPENAI_MAX_TOKENS=1000
 AZURE_OPENAI_TEMPERATURE=0.7
 ```
 
+### 4. External API 설정
+
+```bash
+# .env 파일
+LLM_PROVIDER=external_api
+
+# External API 설정
+EXTERNAL_API_URL=https://your-external-api.com/api/chat
+EXTERNAL_API_AUTHORIZATION=Bearer your_token_here
+EXTERNAL_API_MAX_TOKENS=1000
+EXTERNAL_API_TEMPERATURE=0.7
+```
+
+#### External API 요청/응답 형식
+
+**요청 형식:**
+```json
+{
+  "config": {},
+  "input": {
+    "messages": [
+      {
+        "content": "안녕하세요",
+        "type": "human"
+      }
+    ],
+    "additional_kwargs": {}
+  },
+  "kwargs": {}
+}
+```
+
+**스트리밍 응답 형식:**
+```
+data: {"content": "안녕하세요! "}
+data: {"content": "어떻게 도와드릴까요?"}
+```
+
+**일반 응답 형식:**
+```json
+{
+  "content": "안녕하세요! 어떻게 도와드릴까요?",
+  "status": "success"
+}
+```
+
 ## 🔧 상세 설정
 
 ### 환경 변수 목록
 
 | 변수명 | 설명 | 기본값 | 필수 |
 |--------|------|--------|------|
-| `LLM_PROVIDER` | 사용할 LLM 제공자 (`openai` 또는 `azure_openai`) | `openai` | ✅ |
+| `LLM_PROVIDER` | 사용할 LLM 제공자 (`openai`, `azure_openai`, `external_api`) | `openai` | ✅ |
 | `OPENAI_API_KEY` | OpenAI API 키 | - | OpenAI 사용 시 |
 | `OPENAI_MODEL` | OpenAI 모델명 | `gpt-3.5-turbo` | ❌ |
 | `OPENAI_MAX_TOKENS` | OpenAI 최대 토큰 수 | `1000` | ❌ |
@@ -63,6 +112,10 @@ AZURE_OPENAI_TEMPERATURE=0.7
 | `AZURE_OPENAI_API_VERSION` | Azure OpenAI API 버전 | `2024-02-15-preview` | ❌ |
 | `AZURE_OPENAI_MAX_TOKENS` | Azure OpenAI 최대 토큰 수 | `1000` | ❌ |
 | `AZURE_OPENAI_TEMPERATURE` | Azure OpenAI 온도 설정 | `0.7` | ❌ |
+| `EXTERNAL_API_URL` | External API 엔드포인트 | - | External API 사용 시 |
+| `EXTERNAL_API_AUTHORIZATION` | External API 인증 헤더 | - | External API 사용 시 |
+| `EXTERNAL_API_MAX_TOKENS` | External API 최대 토큰 수 | `1000` | ❌ |
+| `EXTERNAL_API_TEMPERATURE` | External API 온도 설정 | `0.7` | ❌ |
 
 ## 🧪 테스트 방법
 
@@ -86,6 +139,11 @@ python test_llm_providers.py
    export AZURE_OPENAI_API_KEY=your_key
    export AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
    export AZURE_OPENAI_DEPLOYMENT_NAME=your-deployment
+   
+   # External API 테스트
+   export LLM_PROVIDER=external_api
+   export EXTERNAL_API_URL=https://your-external-api.com/api/chat
+   export EXTERNAL_API_AUTHORIZATION=Bearer your_token_here
    ```
 
 2. **서버 재시작**
@@ -113,6 +171,8 @@ class LLMProviderFactory:
             return OpenAIProvider(...)
         elif provider_type == "azure_openai":
             return AzureOpenAIProvider(...)
+        elif provider_type == "external_api":
+            return ExternalAPIProvider(...)
         else:
             raise HandledException(...)
 ```
@@ -152,8 +212,8 @@ python test_llm_providers.py
 `.env` 파일 수정:
 
 ```bash
-# OpenAI에서 Azure OpenAI로 전환
-sed -i 's/LLM_PROVIDER=openai/LLM_PROVIDER=azure_openai/' .env
+# OpenAI에서 External API로 전환
+sed -i 's/LLM_PROVIDER=openai/LLM_PROVIDER=external_api/' .env
 
 # 서버 재시작
 python main.py
@@ -184,17 +244,29 @@ python main.py
 - `AZURE_OPENAI_DEPLOYMENT_NAME` 확인
 - Azure 포털에서 배포 상태 확인
 
-### 3. 제공자 설정 오류
+### 3. External API 연결 오류
+
+```
+❌ External API error: 401 Unauthorized
+```
+
+**해결 방법:**
+- `EXTERNAL_API_AUTHORIZATION` 확인
+- `EXTERNAL_API_URL` 형식 확인
+- API 서버 상태 확인
+- 네트워크 연결 확인
+
+### 4. 제공자 설정 오류
 
 ```
 ❌ Unsupported LLM provider: invalid_provider
 ```
 
 **해결 방법:**
-- `LLM_PROVIDER` 값 확인 (`openai` 또는 `azure_openai`)
+- `LLM_PROVIDER` 값 확인 (`openai`, `azure_openai`, `external_api`)
 - 대소문자 구분 없음
 
-### 4. 환경 변수 누락
+### 5. 환경 변수 누락
 
 ```
 ❌ OpenAI API key is required
@@ -206,13 +278,14 @@ python main.py
 
 ## 📊 성능 비교
 
-| 항목 | OpenAI | Azure OpenAI |
-|------|--------|--------------|
-| 응답 속도 | 빠름 | 빠름 |
-| 안정성 | 높음 | 높음 |
-| 비용 | 사용량 기반 | 사용량 기반 |
-| 지역 제한 | 있음 | 없음 |
-| 커스터마이징 | 제한적 | 높음 |
+| 항목 | OpenAI | Azure OpenAI | External API |
+|------|--------|--------------|--------------|
+| 응답 속도 | 빠름 | 빠름 | API 서버에 따라 |
+| 안정성 | 높음 | 높음 | API 서버에 따라 |
+| 비용 | 사용량 기반 | 사용량 기반 | API 서버 정책 |
+| 지역 제한 | 있음 | 없음 | 없음 |
+| 커스터마이징 | 제한적 | 높음 | 매우 높음 |
+| 스트리밍 | 지원 | 지원 | 지원 |
 
 ## 🔮 향후 계획
 

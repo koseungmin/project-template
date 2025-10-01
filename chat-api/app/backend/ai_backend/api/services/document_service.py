@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 # 공통 모듈 사용
 from shared_core import Document
-from shared_core import DocumentService as BaseDocumentService
+from shared_core import DocumentService as BaseDocumentService, ProcessingJobService
 
 logger = logging.getLogger(__name__)
 
@@ -287,4 +287,31 @@ class DocumentService(BaseDocumentService):
         except HandledException:
             raise
         except Exception as e:
+            raise HandledException(ResponseCode.UNDEFINED_ERROR, e=e)
+    
+    def get_document_processing_jobs(self, document_id: str) -> List[Dict]:
+        """문서의 모든 처리 작업 조회"""
+        try:
+            job_service = ProcessingJobService(self.db)
+            return job_service.get_document_jobs(document_id)
+            
+        except Exception as e:
+            logger.error(f"문서 처리 작업 조회 실패: {str(e)}")
+            raise HandledException(ResponseCode.UNDEFINED_ERROR, e=e)
+    
+    def get_processing_job_progress(self, job_id: str) -> Dict:
+        """처리 작업의 실시간 진행률 조회"""
+        try:
+            job_service = ProcessingJobService(self.db)
+            from shared_core.crud import ProcessingJobCRUD
+            job_crud = ProcessingJobCRUD(self.db)
+            
+            job = job_crud.get_job(job_id)
+            if not job:
+                return None
+                
+            return job_service._job_to_dict(job)
+            
+        except Exception as e:
+            logger.error(f"처리 작업 진행률 조회 실패: {str(e)}")
             raise HandledException(ResponseCode.UNDEFINED_ERROR, e=e)

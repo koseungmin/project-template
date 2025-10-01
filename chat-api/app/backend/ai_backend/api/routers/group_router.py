@@ -310,7 +310,6 @@ def add_group_member(
         role=member.role
     )
 
-
 @router.get("/groups/{group_id}/members", response_model=GroupMemberListResponse)
 def get_group_members(
     group_id: str,
@@ -391,3 +390,4 @@ def remove_group_member(
         group_id=group_id,
         user_id=user_id
     )
+

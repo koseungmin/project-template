@@ -615,5 +615,70 @@ def get_document_type_stats(
     }
 
 
+@router.get("/processing-jobs/{document_id}")
+def get_document_processing_jobs(
+    document_id: str,
+    document_service: DocumentService = Depends(get_document_service)
+):
+    """문서 처리 작업 목록 및 진행률 조회"""
+    try:
+        jobs = document_service.get_document_processing_jobs(document_id)
+        return {
+            "status": "success", 
+            "data": {
+                "document_id": document_id,
+                "processing_jobs": jobs,
+                "total_jobs": len(jobs)
+            }
+        }
+    except Exception as e:
+        logger.error(f"문서 처리 작업 조회 실패: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"처리 작업 조회 실패: {str(e)}"
+        }
+
+
+@router.get("/processing-progress/{job_id}")  
+def get_processing_progress(
+    job_id: str,
+    document_service: DocumentService = Depends(get_document_service)
+):
+    """특정 처리 작업의 실시간 진행률 조회"""
+    try:
+        progress = document_service.get_processing_job_progress(job_id)
+        if not progress:
+            return {
+                "status": "error",
+                "message": "처리 작업을 찾을 수 없습니다"
+            }
+            
+        # 진행률 계산
+        progress_percent = 0
+        if progress.get('total_steps', 0) > 0:
+            progress_percent = (progress.get('completed_steps', 0) / progress.get('total_steps', 1)) * 100
+            
+        return {
+            "status": "success",
+            "data": {
+                "job_id": job_id,
+                "progress_percent": round(progress_percent, 1),
+                "current_step": progress.get('current_step', ''),
+                "completed_steps": progress.get('completed_steps', 0),
+                "total_steps": progress.get('total_steps', 0),
+                "job_status": progress.get('status', 'unknown'),
+                "started_at": progress.get('started_at', ''),
+                "updated_at": progress.get('updated_at', ''),
+                "result_data": progress.get('result_data', {})
+            }
+        }
+    except Exception as e:
+        logger.error(f"처리 진행률 조회 실패: {str(e)}")
+        return {
+            "status": "error", 
+            "message": f"진행률 조회 실패: {str(e)}"
+        }
+
+
 
 

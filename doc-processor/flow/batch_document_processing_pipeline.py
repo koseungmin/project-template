@@ -141,30 +141,63 @@ def process_single_document_complete(document_path: str, max_pages: int = None, 
                 db_initialized = False
         
         # 1단계: 텍스트 추출
+        if job_id:
+            update_job_progress(job_id, "텍스트 추출 시작", 0)
+            
         logger.info("📄 1단계: 텍스트 추출")
         text_result = extract_text_from_document(document_path, max_pages)
+        
+        if job_id:
+            update_job_progress(job_id, f"텍스트 추출 완료 - {text_result['total_pages']}페이지", 1,
+                              {"extracted_pages": text_result['total_pages']})
         
         if skip_image_processing:
             # 이미지 처리 건너뛰기
             logger.info("⏭️ 2-3단계: 이미지 처리 건너뛰기")
             image_result = {"image_paths": []}
             description_result = {"image_descriptions": {}, "total_images": 0}
+            
+            if job_id:
+                update_job_progress(job_id, "이미지 처리 건너뛰기", 3)
+                
         else:
             # 2단계: 페이지별 이미지 캡처
+            if job_id:
+                update_job_progress(job_id, "페이지별 이미지 캡처 시작", 1)
+                
             logger.info("🖼️ 2단계: 페이지별 이미지 캡처")
             image_result = capture_page_images(document_path, max_pages=max_pages)
             
+            if job_id:
+                update_job_progress(job_id, f"이미지 캡처 완료 - {len(image_result['image_paths'])}개", 2,
+                                  {"captured_images": len(image_result['image_paths'])})
+            
             # 3단계: GPT를 이용한 이미지 설명 생성
+            if job_id:
+                update_job_progress(job_id, "GPT 이미지 설명 생성 시작", 2)
+                
             logger.info("🤖 3단계: GPT 이미지 설명 생성")
             description_result = generate_image_descriptions(image_result["image_paths"])
+            
+            if job_id:
+                update_job_progress(job_id, f"GPT 설명 생성 완료 - {description_result['total_images']}개", 3,
+                                  {"generated_descriptions": description_result['total_images']})
         
         # 4단계: Vector DB 구성
+        if job_id:
+            update_job_progress(job_id, "Vector DB 구성 시작 (임베딩 생성)", 3)
+            
         logger.info("🗄️ 4단계: Vector DB 구성")
         vector_result = create_vector_database(
             text_result, 
             description_result, 
             document_path
         )
+        
+        if job_id:
+            update_job_progress(job_id, f"Vector DB 구성 완료 - {vector_result['total_documents']}개 벡터", 4,
+                              {"vector_documents": vector_result['total_documents'],
+                               "embedding_model": vector_result['embedding_model']})
         
         # 5단계: PostgreSQL에 청크 데이터 저장
         saved_chunks = 0

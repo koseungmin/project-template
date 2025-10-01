@@ -1,8 +1,9 @@
 # _*_ coding: utf-8 _*_
 """Simple Pydantic Settings implementation."""
+from typing import List, Optional
+
 from pydantic import Field, validator
 from pydantic_settings import BaseSettings
-from typing import List, Optional
 
 
 class Settings(BaseSettings):
@@ -91,11 +92,28 @@ class Settings(BaseSettings):
     # database_implicit_returning: bool = Field(default=True, env="DATABASE_IMPLICIT_RETURNING")
     # database_hide_parameters: bool = Field(default=True, env="DATABASE_HIDE_PARAMETERS")
     
+    # LLM Provider Configuration
+    llm_provider: str = Field(default="openai", env="LLM_PROVIDER")
+    
     # OpenAI Configuration
     openai_api_key: str = Field(default="", env="OPENAI_API_KEY")  # 기본값 추가
     openai_model: str = Field(default="gpt-3.5-turbo", env="OPENAI_MODEL")
     openai_max_tokens: int = Field(default=1000, env="OPENAI_MAX_TOKENS")
     openai_temperature: float = Field(default=0.7, env="OPENAI_TEMPERATURE")
+    
+    # Azure OpenAI Configuration
+    azure_openai_api_key: str = Field(default="", env="AZURE_OPENAI_API_KEY")
+    azure_openai_endpoint: str = Field(default="", env="AZURE_OPENAI_ENDPOINT")
+    azure_openai_deployment_name: str = Field(default="", env="AZURE_OPENAI_DEPLOYMENT_NAME")
+    azure_openai_api_version: str = Field(default="2024-02-15-preview", env="AZURE_OPENAI_API_VERSION")
+    azure_openai_max_tokens: int = Field(default=1000, env="AZURE_OPENAI_MAX_TOKENS")
+    azure_openai_temperature: float = Field(default=0.7, env="AZURE_OPENAI_TEMPERATURE")
+    
+    # External API Configuration
+    external_api_url: str = Field(default="", env="EXTERNAL_API_URL")
+    external_api_authorization: str = Field(default="", env="EXTERNAL_API_AUTHORIZATION")
+    external_api_max_tokens: int = Field(default=1000, env="EXTERNAL_API_MAX_TOKENS")
+    external_api_temperature: float = Field(default=0.7, env="EXTERNAL_API_TEMPERATURE")
     
     # Cache Configuration
     cache_enabled: bool = Field(default=True, env="CACHE_ENABLED")
@@ -208,8 +226,20 @@ class Settings(BaseSettings):
     
     def validate_settings(self):
         """설정 유효성 검사"""
-        if not self.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is required")
+        if self.llm_provider == "openai" and not self.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is required when using OpenAI provider")
+        elif self.llm_provider == "azure_openai":
+            if not self.azure_openai_api_key:
+                raise ValueError("AZURE_OPENAI_API_KEY is required when using Azure OpenAI provider")
+            if not self.azure_openai_endpoint:
+                raise ValueError("AZURE_OPENAI_ENDPOINT is required when using Azure OpenAI provider")
+            if not self.azure_openai_deployment_name:
+                raise ValueError("AZURE_OPENAI_DEPLOYMENT_NAME is required when using Azure OpenAI provider")
+        elif self.llm_provider == "external_api":
+            if not self.external_api_url:
+                raise ValueError("EXTERNAL_API_URL is required when using External API provider")
+            if not self.external_api_authorization:
+                raise ValueError("EXTERNAL_API_AUTHORIZATION is required when using External API provider")
 
 
 # 전역 설정 인스턴스
