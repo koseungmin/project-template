@@ -346,6 +346,7 @@ class ExternalAPIProvider(BaseLLMProvider):
             openai_provider = OpenAIProvider(
                 api_key=settings.openai_api_key,
                 base_url=settings.openai_base_url,
+                model=settings.openai_model,
             )
             
             # OpenAIProvider의 create_title_completion 사용
