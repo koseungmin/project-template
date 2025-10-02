@@ -273,19 +273,26 @@ class ExternalAPIProvider(BaseLLMProvider):
     
     def _store_node_data(self, chunk_data: dict):
         """노드 결과 데이터를 메모리에 수집 (LangServe 스타일)"""
-        # LangServe 스타일: updates 필드에서 노드 정보 추출
+        # 노드 기본 정보 추출
+        node_name = chunk_data.get('node_name', 'unknown')
+        node_type = chunk_data.get('node_type', 'unknown')
         updates = chunk_data.get('updates', {})
         
-        # updates에서 노드 이름과 데이터 추출
-        for node_name, node_data in updates.items():
-            if isinstance(node_data, dict):
-                # 노드 데이터를 메모리에 저장
-                self.node_data[node_name] = node_data
-                logger.debug(f"Node '{node_name}' data collected: {node_data}")
-            else:
-                # 단순 값인 경우
-                self.node_data[node_name] = {"result": node_data}
-                logger.debug(f"Node '{node_name}' simple data collected: {node_data}")
+        # 노드 데이터 구조화
+        node_data = {
+            'node_name': node_name,
+            'node_type': node_type,
+            'updates': updates
+        }
+        
+        # 추가 필드들도 포함
+        for key, value in chunk_data.items():
+            if key not in ['node_name', 'node_type', 'updates']:
+                node_data[key] = value
+        
+        # 노드 데이터를 메모리에 저장
+        self.node_data[node_name] = node_data
+        logger.debug(f"Node '{node_name}' ({node_type}) data collected: {node_data}")
     
     def get_collected_node_data(self):
         """수집된 노드 데이터 반환"""

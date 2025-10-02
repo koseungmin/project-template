@@ -232,13 +232,31 @@ class LLMChatService:
             if 'ai_message_id' in locals():
                 try:
                     chat_crud = ChatCRUD(self.db)
-                    chat_crud.update_message_to_error(ai_message_id, str(e))
+                    # AIMessage 객체를 안전하게 문자열로 변환
+                    error_msg = self._safe_error_message(e)
+                    chat_crud.update_message_to_error(ai_message_id, error_msg)
                 except HandledException:
                     raise  # Repository에서 발생한 HandledException 전파
                 except Exception as db_error:
                     logger.error(f"Failed to update message status to error: {db_error}")
             
             raise HandledException(ResponseCode.UNDEFINED_ERROR, e=e)
+    
+    def _safe_error_message(self, error) -> str:
+        """에러 메시지를 안전하게 문자열로 변환"""
+        try:
+            # AIMessage 객체인지 확인
+            if hasattr(error, 'content') and hasattr(error, 'type'):
+                return f"AI Message Error: {error.content}"
+            # 일반적인 예외 객체
+            elif hasattr(error, 'args') and error.args:
+                return str(error.args[0]) if len(error.args) == 1 else str(error.args)
+            # 기타 객체
+            else:
+                return str(error)
+        except Exception:
+            # 모든 변환에 실패한 경우
+            return "Unknown error occurred"
     
     async def _generate_ai_response(self, chat_id: str) -> str:
         """OpenAI API를 사용하여 AI 응답 생성"""

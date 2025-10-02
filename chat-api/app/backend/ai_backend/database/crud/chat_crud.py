@@ -198,18 +198,69 @@ class ChatCRUD:
             raise HandledException(ResponseCode.DATABASE_QUERY_ERROR, e=e)
     
     
-    def update_message_to_error(self, message_id: str, error_message: str):
+    def update_message_to_error(self, message_id: str, error_message):
         """메시지를 에러 상태로 업데이트"""
         try:
             self.update_message_status(message_id, "error")
+            # 에러 메시지를 안전하게 문자열로 변환
+            safe_error_msg = self._safe_error_message(error_message)
             # 에러 메시지로 업데이트
             message = self.session.query(ChatMessage).filter(ChatMessage.message_id == message_id).first()
             if message:
-                message.message = f"❌ 오류가 발생했습니다: {error_message}"
+                message.message = f"❌ 오류가 발생했습니다: {safe_error_msg}"
                 self.session.commit()
         except Exception as e:
             logger.error(f"Database error updating message to error: {str(e)}")
             raise HandledException(ResponseCode.DATABASE_QUERY_ERROR, e=e)
+    
+    def _safe_error_message(self, error) -> str:
+        """에러 메시지를 안전하게 문자열로 변환"""
+        try:
+            # AIMessage 객체인지 확인
+            if hasattr(error, 'content') and hasattr(error, 'type'):
+                return f"AI Message Error: {error.content}"
+            # 일반적인 예외 객체
+            elif hasattr(error, 'args') and error.args:
+                return str(error.args[0]) if len(error.args) == 1 else str(error.args)
+            # 기타 객체
+            else:
+                return str(error)
+        except Exception:
+            # 모든 변환에 실패한 경우
+            return "Unknown error occurred"
+    
+    def _safe_json_serialize(self, data):
+        """데이터를 안전하게 JSON 직렬화 가능한 형태로 변환"""
+        import json
+        
+        def convert_to_serializable(obj):
+            if hasattr(obj, 'content') and hasattr(obj, 'type'):
+                # AIMessage 객체인 경우
+                return {
+                    'type': getattr(obj, 'type', 'unknown'),
+                    'content': getattr(obj, 'content', ''),
+                    'additional_kwargs': getattr(obj, 'additional_kwargs', {})
+                }
+            elif hasattr(obj, '__dict__'):
+                # 객체인 경우 딕셔너리로 변환
+                return {k: convert_to_serializable(v) for k, v in obj.__dict__.items()}
+            elif isinstance(obj, dict):
+                return {k: convert_to_serializable(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [convert_to_serializable(item) for item in obj]
+            else:
+                return obj
+        
+        try:
+            # 먼저 변환 시도
+            serializable_data = convert_to_serializable(data)
+            # JSON 직렬화 테스트
+            json.dumps(serializable_data)
+            return serializable_data
+        except Exception as e:
+            logger.warning(f"Failed to serialize external_api_nodes: {e}")
+            # 실패한 경우 기본값 반환
+            return {"error": "Failed to serialize node data", "original_type": str(type(data))}
     
     def get_active_generating_chats(self) -> List[dict]:
         """현재 생성 중인 채팅 목록 반환"""
@@ -277,9 +328,10 @@ class ChatCRUD:
             message = self.session.query(ChatMessage).filter(ChatMessage.message_id == message_id).first()
             if message:
                 message.message = content
-                # External API 노드 데이터가 있으면 저장
+                # External API 노드 데이터가 있으면 안전하게 저장
                 if external_api_nodes:
-                    message.external_api_nodes = external_api_nodes
+                    safe_nodes = self._safe_json_serialize(external_api_nodes)
+                    message.external_api_nodes = safe_nodes
                 self.session.commit()
         except Exception as e:
             logger.error(f"Database error updating AI message completed: {str(e)}")
