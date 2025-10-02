@@ -1,7 +1,16 @@
 # _*_ coding: utf-8 _*_
-from sqlalchemy import Column, Text, String, DateTime, Boolean, Integer, ForeignKey
-from sqlalchemy.sql.expression import func, false, true
 from ai_backend.database.base import Base
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy.sql.expression import false, func, true
 
 __all__ = [
     "Chat",
@@ -31,4 +40,7 @@ class ChatMessage(Base):
     status = Column('STATUS', String(20), nullable=True)  # generating, completed, cancelled, error
     create_dt = Column('CREATE_DT', DateTime, nullable=False, server_default=func.now())
     is_deleted = Column('IS_DELETED', Boolean, nullable=False, server_default=false())
-    is_cancelled = Column('IS_CANCELLED', Boolean, nullable=False, server_default=false())  # 취소된 메시지 표시 
+    is_cancelled = Column('IS_CANCELLED', Boolean, nullable=False, server_default=false())  # 취소된 메시지 표시
+    
+    # External API 노드 처리 결과 저장용 (JSON)
+    external_api_nodes = Column('EXTERNAL_API_NODES', JSON, nullable=True) 

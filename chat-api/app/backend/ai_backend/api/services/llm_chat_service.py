@@ -2,18 +2,22 @@
 """LLM Chat Service for handling AI conversations."""
 import asyncio
 import logging
+from datetime import datetime
 from typing import Dict, List, Optional
-from openai import AsyncOpenAI
-from sqlalchemy.orm import Session
-from ai_backend.database.models.chat_models import ChatMessage
-from ai_backend.database.crud.chat_crud import ChatCRUD
+
+import tiktoken
+from ai_backend.api.services.llm_provider_factory import (
+    BaseLLMProvider,
+    LLMProviderFactory,
+)
 from ai_backend.database.base import Database
-from ai_backend.utils.uuid_gen import gen
+from ai_backend.database.crud.chat_crud import ChatCRUD
+from ai_backend.database.models.chat_models import ChatMessage
 from ai_backend.types.response.exceptions import HandledException
 from ai_backend.types.response.response_code import ResponseCode
-from datetime import datetime
-import tiktoken
-from ai_backend.api.services.llm_provider_factory import LLMProviderFactory, BaseLLMProvider
+from ai_backend.utils.uuid_gen import gen
+from openai import AsyncOpenAI
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -502,8 +506,19 @@ class LLMChatService:
             
             # 취소되지 않은 경우에만 완전한 응답 처리
             if not is_cancelled and ai_response_content:
-                # AI 응답 완료 후 상태 업데이트
-                self.chat_crud.update_ai_message_completed(ai_message_id, ai_response_content)
+                # External API provider인 경우 노드 데이터 저장
+                if hasattr(self.llm_provider, 'get_collected_node_data'):
+                    node_data = self.llm_provider.get_collected_node_data()
+                    if node_data:
+                        # 노드 데이터와 함께 메시지 완료 업데이트
+                        self.chat_crud.update_ai_message_completed(ai_message_id, ai_response_content, node_data)
+                        # 노드 데이터 초기화
+                        self.llm_provider.clear_node_data()
+                    else:
+                        self.chat_crud.update_ai_message_completed(ai_message_id, ai_response_content)
+                else:
+                    # 일반 provider인 경우
+                    self.chat_crud.update_ai_message_completed(ai_message_id, ai_response_content)
                 
                 # 스트리밍 완료 후 캐시 무효화
                 if self.use_redis:

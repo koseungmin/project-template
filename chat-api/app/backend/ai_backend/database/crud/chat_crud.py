@@ -1,13 +1,14 @@
 # _*_ coding: utf-8 _*_
 """Chat CRUD operations with database."""
 import logging
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
-from typing import Optional, List
 from datetime import datetime
+from typing import List, Optional
+
 from ai_backend.database.models.chat_models import Chat, ChatMessage
 from ai_backend.types.response.exceptions import HandledException
 from ai_backend.types.response.response_code import ResponseCode
+from sqlalchemy import desc
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,7 @@ class ChatCRUD:
             logger.error(f"Database error clearing conversation: {str(e)}")
             raise HandledException(ResponseCode.DATABASE_QUERY_ERROR, e=e)
     
+    
     def update_message_to_error(self, message_id: str, error_message: str):
         """메시지를 에러 상태로 업데이트"""
         try:
@@ -267,7 +269,7 @@ class ChatCRUD:
             logger.error(f"Database error saving AI message generating: {str(e)}")
             raise HandledException(ResponseCode.DATABASE_QUERY_ERROR, e=e)
     
-    def update_ai_message_completed(self, message_id: str, content: str):
+    def update_ai_message_completed(self, message_id: str, content: str, external_api_nodes: dict = None):
         """AI 메시지를 완료 상태로 업데이트"""
         try:
             self.update_message_status(message_id, "completed")
@@ -275,6 +277,9 @@ class ChatCRUD:
             message = self.session.query(ChatMessage).filter(ChatMessage.message_id == message_id).first()
             if message:
                 message.message = content
+                # External API 노드 데이터가 있으면 저장
+                if external_api_nodes:
+                    message.external_api_nodes = external_api_nodes
                 self.session.commit()
         except Exception as e:
             logger.error(f"Database error updating AI message completed: {str(e)}")

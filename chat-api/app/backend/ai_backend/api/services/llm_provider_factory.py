@@ -172,6 +172,7 @@ class ExternalAPIProvider(BaseLLMProvider):
         
         self.api_url = api_url.rstrip('/')
         self.authorization_header = authorization_header
+        self.node_data = {}  # 노드 데이터를 메모리에 수집
         logger.info("External API provider initialized with URL: " + str(self.api_url))
     
     async def create_completion(self, messages: list, stream: bool = False):
@@ -202,7 +203,8 @@ class ExternalAPIProvider(BaseLLMProvider):
             }
             
             if stream:
-                return await self._create_streaming_completion(request_body, headers)
+                # 스트리밍의 경우 async generator를 직접 반환
+                return self._create_streaming_completion(request_body, headers)
             else:
                 return await self._create_non_streaming_completion(request_body, headers)
                 
@@ -224,14 +226,95 @@ class ExternalAPIProvider(BaseLLMProvider):
                         msg="External API returned status " + str(response.status)
                     )
                 
-                # 스트리밍 응답을 청크별로 처리
-                async for line in response.content:
-                    if line:
-                        try:
-                            chunk_data = json.loads(line.decode('utf-8'))
-                            yield self._create_chunk_object(chunk_data)
-                        except json.JSONDecodeError:
-                            continue
+                # SSE 형식으로 스트리밍 응답 처리
+                buffer = ""
+                async for chunk in response.content.iter_any():
+                    if chunk:
+                        buffer += chunk.decode('utf-8', errors='ignore')
+                        
+                        # SSE 이벤트 파싱
+                        while '\n\n' in buffer:
+                            event_block, buffer = buffer.split('\n\n', 1)
+                            if event_block.strip():
+                                yield self._parse_sse_event(event_block)
+    
+    def _parse_sse_event(self, event_block: str):
+        """SSE 이벤트를 파싱하여 OpenAI 스타일 청크 객체로 변환"""
+        lines = event_block.strip().split('\n')
+        event_type = None
+        data_content = None
+        
+        for line in lines:
+            if line.startswith('event: '):
+                event_type = line[7:].strip()
+            elif line.startswith('data: '):
+                data_content = line[6:].strip()
+        
+        if not data_content:
+            return None
+            
+        try:
+            chunk_data = json.loads(data_content)
+            
+            # 스트리밍용 컨텐츠 추출
+            content = self._extract_content_from_event(event_type, chunk_data)
+            
+            # 노드 데이터 저장 (data 이벤트인 경우)
+            if event_type == "data":
+                self._store_node_data(chunk_data)
+            
+            if content is not None:
+                return self._create_chunk_object({'content': content})
+            return None
+            
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse SSE data: {data_content}")
+            return None
+    
+    def _store_node_data(self, chunk_data: dict):
+        """노드 결과 데이터를 메모리에 수집"""
+        node_name = chunk_data.get('node_name', 'unknown')
+        updates = chunk_data.get('updates', {})
+        
+        # 노드 데이터를 메모리에 저장
+        self.node_data[node_name] = updates
+        logger.debug(f"Node '{node_name}' data collected: {updates}")
+    
+    def get_collected_node_data(self):
+        """수집된 노드 데이터 반환"""
+        return self.node_data.copy()
+    
+    def clear_node_data(self):
+        """노드 데이터 초기화"""
+        self.node_data.clear()
+    
+    def _extract_content_from_event(self, event_type: str, chunk_data: dict):
+        """SSE 이벤트 타입에 따라 컨텐츠 추출 (스트리밍용)"""
+        if event_type == "final_result":
+            # 최종 결과 (토큰별 스트리밍) - 최종 답변만 스트리밍으로 사용자에게 표시
+            if isinstance(chunk_data, str):
+                return chunk_data
+            elif 'final_result' in chunk_data:
+                return chunk_data['final_result']
+        
+        elif event_type == "llm":
+            # LLM 중간 토큰 - 최종 답변이 아니므로 스트리밍하지 않음
+            logger.debug(f"LLM intermediate token: {chunk_data}")
+            return None
+        
+        elif event_type == "data":
+            # data 이벤트는 노드 결과 데이터 - 스트리밍하지 않고 저장용
+            logger.debug(f"Node data received: {chunk_data}")
+            return None
+        
+        elif event_type == "error":
+            # 에러 메시지
+            error_msg = chunk_data.get('error', 'Unknown error')
+            logger.error(f"External API error: {error_msg}")
+            return None
+        
+        # 다른 이벤트 타입들은 무시 (progress, tool_calls, tool, metadata 등)
+        return None
     
     async def _create_non_streaming_completion(self, request_body: dict, headers: dict):
         """Create non-streaming completion"""
