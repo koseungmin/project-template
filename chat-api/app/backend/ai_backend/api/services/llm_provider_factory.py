@@ -38,7 +38,7 @@ class BaseLLMProvider:
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI provider implementation"""
     
-    def __init__(self, api_key: str, base_url: str, model: str, max_tokens: int = 1000, temperature: float = 0.7):
+    def __init__(self, api_key: str, base_url: str, model: str = "gpt-3.5-turbo", max_tokens: int = 1000, temperature: float = 0.7):
         super().__init__(model, max_tokens, temperature)
         
         if not api_key:
@@ -345,7 +345,7 @@ class ExternalAPIProvider(BaseLLMProvider):
             
             openai_provider = OpenAIProvider(
                 api_key=settings.openai_api_key,
-                base_url==settings.openai_base_url,
+                base_url=settings.openai_base_url,
             )
             
             # OpenAIProvider의 create_title_completion 사용
