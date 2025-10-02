@@ -83,7 +83,7 @@ class ChatCRUD:
                 .limit(limit)\
                 .all()
         except Exception as e:
-            log_error("Database error getting messages", e)
+            logger.error("Database error getting messages: " + str(e))
             raise HandledException(ResponseCode.DATABASE_QUERY_ERROR, e=e)
     
     def get_chat(self, chat_id: str) -> Optional[Chat]:
