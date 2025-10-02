@@ -100,6 +100,7 @@ class Settings(BaseSettings):
     openai_model: str = Field(default="gpt-3.5-turbo", env="OPENAI_MODEL")
     openai_max_tokens: int = Field(default=1000, env="OPENAI_MAX_TOKENS")
     openai_temperature: float = Field(default=0.7, env="OPENAI_TEMPERATURE")
+    openai_base_url: str = Field(default="openai_base_url", env="OPENAI_BASE_URL")
     
     # Azure OpenAI Configuration
     azure_openai_api_key: str = Field(default="", env="AZURE_OPENAI_API_KEY")
@@ -114,6 +115,12 @@ class Settings(BaseSettings):
     external_api_authorization: str = Field(default="", env="EXTERNAL_API_AUTHORIZATION")
     external_api_max_tokens: int = Field(default=1000, env="EXTERNAL_API_MAX_TOKENS")
     external_api_temperature: float = Field(default=0.7, env="EXTERNAL_API_TEMPERATURE")
+    
+    # External API OpenAI Configuration (for title generation)
+    openai_api_key: str = Field(default="", env="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-3.5-turbo", env="OPENAI_MODEL")
+    openai_max_tokens: int = Field(default=50, env="OPENAI_MAX_TOKENS")
+    openai_temperature: float = Field(default=0.7, env="OPENAI_TEMPERATURE")
     
     # Cache Configuration
     cache_enabled: bool = Field(default=True, env="CACHE_ENABLED")

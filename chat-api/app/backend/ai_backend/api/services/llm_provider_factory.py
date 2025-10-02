@@ -38,13 +38,13 @@ class BaseLLMProvider:
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI provider implementation"""
     
-    def __init__(self, api_key: str, model: str, max_tokens: int = 1000, temperature: float = 0.7):
+    def __init__(self, api_key: str, base_url: str, model: str, max_tokens: int = 1000, temperature: float = 0.7):
         super().__init__(model, max_tokens, temperature)
         
         if not api_key:
             raise HandledException(ResponseCode.LLM_CONFIG_ERROR, msg="OpenAI API key is required")
         
-        self.client = AsyncOpenAI(api_key=api_key)
+        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         logger.info("OpenAI provider initialized with model: " + str(model))
     
     async def create_completion(self, messages: list, stream: bool = False):
@@ -338,49 +338,19 @@ class ExternalAPIProvider(BaseLLMProvider):
         return CompletionObject(content)
     
     async def create_title_completion(self, message: str):
-        """Create title completion using External API"""
+        """Create title completion using OpenAIProvider (External API는 타이틀만 OpenAI 사용)"""
         try:
-            # 제목 생성을 위한 간단한 메시지 구성
-            messages = [
-                {
-                    "content": "다음 질문을 기반으로 간단하고 명확한 채팅방 제목을 생성해주세요. 20자 이내로 만들어주세요.",
-                    "type": "human"
-                },
-                {
-                    "content": "질문: " + str(message),
-                    "type": "human"
-                }
-            ]
+            # OpenAIProvider를 직접 생성해서 타이틀 생성 (설정에서 값 가져오기)
+            from ai_backend.config.simple_settings import settings
             
-            request_body = {
-                "config": {},
-                "input": {
-                    "messages": messages,
-                    "additional_kwargs": {}
-                },
-                "kwargs": {}
-            }
+            openai_provider = OpenAIProvider(
+                api_key=settings.openai_api_key,
+                base_url==settings.openai_base_url,
+            )
             
-            headers = {
-                "Authorization": self.authorization_header,
-                "Content-Type": "application/json"
-            }
+            # OpenAIProvider의 create_title_completion 사용
+            return await openai_provider.create_title_completion(message)
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.api_url,
-                    json=request_body,
-                    headers=headers
-                ) as response:
-                    if response.status != 200:
-                        raise HandledException(
-                            ResponseCode.CHAT_AI_RESPONSE_ERROR, 
-                            msg="External API title generation returned status " + str(response.status)
-                        )
-                    
-                    response_data = await response.json()
-                    return self._create_completion_object(response_data)
-                    
         except Exception as e:
             logger.error("External API title generation error: " + str(e))
             raise HandledException(ResponseCode.CHAT_AI_RESPONSE_ERROR, e=e)
