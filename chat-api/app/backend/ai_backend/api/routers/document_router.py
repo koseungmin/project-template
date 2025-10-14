@@ -1,15 +1,15 @@
 # _*_ coding: utf-8 _*_
 """Document Management API endpoints."""
-from fastapi import APIRouter, Depends, UploadFile, File, Form, Query
-from fastapi.responses import StreamingResponse
-from typing import List, Optional
 import io
 import logging
 import os
 from pathlib import Path
+from typing import List, Optional
 
-from ai_backend.core.dependencies import get_document_service
 from ai_backend.api.services.document_service import DocumentService
+from ai_backend.core.dependencies import get_document_service
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["document-management"])
@@ -64,10 +64,11 @@ def upload_folder(
     """폴더 전체 업로드 (Document 테이블에 저장)"""
     try:
         import os
-        from pathlib import Path
-        from fastapi import UploadFile
         from io import BytesIO
-        
+        from pathlib import Path
+
+        from fastapi import UploadFile
+
         # 폴더 경로 검증
         if not folder_path or not os.path.exists(folder_path):
             return {
@@ -203,6 +204,29 @@ def download_document(
         media_type=media_type,
         headers={
             "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+        }
+    )
+
+
+@router.get("/documents/{document_id}/view")
+def view_document(
+    document_id: str,
+    user_id: str = Query(default="user"),
+    document_service: DocumentService = Depends(get_document_service)
+):
+    """문서 뷰어 (브라우저에서 직접 보기)"""
+    # Service Layer에서 전파된 HandledException을 그대로 전파
+    # Global Exception Handler가 자동으로 처리
+    file_content, filename, media_type = document_service.download_document(
+        document_id, user_id
+    )
+    
+    # 브라우저에서 바로 보기 위해 inline 설정
+    return StreamingResponse(
+        io.BytesIO(file_content),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": "inline"
         }
     )
 

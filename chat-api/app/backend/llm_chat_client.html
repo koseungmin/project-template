@@ -12,6 +12,7 @@
             background-color: #f5f5f5;
             height: 100vh;
             display: flex;
+            overflow: hidden;
         }
         .sidebar {
             width: 300px;
@@ -502,6 +503,10 @@
             cursor: pointer;
             font-size: 10px;
         }
+        .view-btn {
+            background: #28a745;
+            color: white;
+        }
         .download-btn {
             background: #007bff;
             color: white;
@@ -604,6 +609,121 @@
         .rating-submit-btn:hover {
             background: #0056b3;
         }
+        /* PDF 뷰어 패널 스타일 */
+        .pdf-viewer-panel {
+            position: fixed;
+            right: -600px;
+            top: 0;
+            width: 600px;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+            transition: right 0.3s ease;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+        }
+        .pdf-viewer-panel.open {
+            right: 0;
+        }
+        .pdf-viewer-header {
+            padding: 15px 20px;
+            background: #007bff;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #0056b3;
+        }
+        .pdf-viewer-title {
+            font-size: 16px;
+            font-weight: bold;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-right: 10px;
+        }
+        .pdf-page-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-right: 10px;
+        }
+        .pdf-page-control input {
+            width: 50px;
+            padding: 4px 8px;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 3px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            text-align: center;
+            font-size: 14px;
+        }
+        .pdf-page-control input:focus {
+            outline: none;
+            background: rgba(255,255,255,0.3);
+        }
+        .pdf-page-control button {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .pdf-page-control button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .pdf-page-control span {
+            font-size: 14px;
+            color: rgba(255,255,255,0.9);
+        }
+        .close-viewer-btn {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+        }
+        .close-viewer-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .pdf-viewer-content {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+        .pdf-viewer-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        .pdf-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #6c757d;
+        }
+        /* 채팅 컨테이너 크기 조정 */
+        .chat-container.viewer-open {
+            margin-right: 600px;
+        }
+        /* 문서 항목 활성화 표시 */
+        .document-item.active {
+            background: #d1ecf1;
+            border-color: #17a2b8;
+        }
     </style>
 </head>
 <body>
@@ -686,6 +806,24 @@
         <div class="chat-input">
             <input type="text" id="messageInput" placeholder="질문을 입력하세요..." onkeypress="handleKeyPress(event)" disabled>
             <button onclick="sendMessage()" id="sendButton" disabled>전송</button>
+        </div>
+    </div>
+
+    <!-- PDF 뷰어 패널 -->
+    <div class="pdf-viewer-panel" id="pdfViewerPanel">
+        <div class="pdf-viewer-header">
+            <div class="pdf-viewer-title" id="pdfViewerTitle">문서 뷰어</div>
+            <div class="pdf-page-control">
+                <span>페이지:</span>
+                <input type="number" id="pdfPageInput" min="1" placeholder="1" onkeypress="handlePdfPageKeyPress(event)">
+                <button onclick="goToPdfPage()">이동</button>
+            </div>
+            <button class="close-viewer-btn" onclick="closePdfViewer()">×</button>
+        </div>
+        <div class="pdf-viewer-content">
+            <div class="pdf-loading" id="pdfLoading">PDF를 불러오는 중...</div>
+            <!-- 브라우저 내장 PDF 뷰어 사용 -->
+            <iframe class="pdf-viewer-iframe" id="pdfViewerIframe" style="display: none;"></iframe>
         </div>
     </div>
 
@@ -1557,17 +1695,32 @@
             documents.forEach(doc => {
                 const docDiv = document.createElement('div');
                 docDiv.className = 'document-item';
+                docDiv.dataset.documentId = doc.document_id;
                 
                 const fileSize = formatFileSize(doc.file_size);
                 const createTime = new Date(doc.create_dt).toLocaleString();
                 
+                // PDF 파일인 경우에만 뷰어 버튼 추가
+                const isPdf = (doc.file_extension && doc.file_extension.toLowerCase() === '.pdf') ||
+                              (doc.file_type && doc.file_type.toLowerCase() === 'application/pdf') ||
+                              (doc.document_name && doc.document_name.toLowerCase().endsWith('.pdf'));
+                
+                // 버튼 HTML 생성
+                let buttonsHtml = '';
+                if (isPdf) {
+                    buttonsHtml = `<button class="document-btn view-btn" onclick="event.stopPropagation(); openPdfViewer('${doc.document_id}', '${doc.document_name.replace(/'/g, "\\'")}')">보기</button>`;
+                }
+                buttonsHtml += `
+                    <button class="document-btn download-btn" onclick="event.stopPropagation(); downloadDocument('${doc.document_id}')">다운로드</button>
+                    <button class="document-btn delete-btn" onclick="event.stopPropagation(); deleteDocument('${doc.document_id}')">삭제</button>
+                `;
+                
                 docDiv.innerHTML = `
                     <div class="document-name" title="${doc.document_name}">
-                        ${doc.document_name} (${fileSize})
+                        ${isPdf ? '📄 ' : '📎 '}${doc.document_name} (${fileSize})
                     </div>
                     <div class="document-actions">
-                        <button class="document-btn download-btn" onclick="downloadDocument('${doc.document_id}')">다운로드</button>
-                        <button class="document-btn delete-btn" onclick="deleteDocument('${doc.document_id}')">삭제</button>
+                        ${buttonsHtml}
                     </div>
                 `;
                 
@@ -1895,6 +2048,147 @@
                     statusDiv.parentNode.removeChild(statusDiv);
                 }
             }, 3000);
+        }
+
+        // PDF 뷰어 관련 함수들
+        let currentPdfUrl = '';
+        let currentDocumentId = '';
+        
+        function openPdfViewer(documentId, documentName, pageNumber = 1) {
+            const panel = document.getElementById('pdfViewerPanel');
+            const chatContainer = document.querySelector('.chat-container');
+            const title = document.getElementById('pdfViewerTitle');
+            const iframe = document.getElementById('pdfViewerIframe');
+            const loading = document.getElementById('pdfLoading');
+            const pageInput = document.getElementById('pdfPageInput');
+            
+            // 현재 문서 ID 저장
+            currentDocumentId = documentId;
+            
+            // 제목 설정
+            title.textContent = documentName;
+            
+            // 페이지 입력 초기화
+            pageInput.value = pageNumber;
+            
+            // 로딩 표시
+            loading.style.display = 'block';
+            loading.textContent = 'PDF를 불러오는 중...';
+            loading.style.color = '#6c757d';
+            iframe.style.display = 'none';
+            
+            // 패널 열기
+            panel.classList.add('open');
+            chatContainer.classList.add('viewer-open');
+            
+            // 활성 문서 표시
+            document.querySelectorAll('.document-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            const activeDoc = document.querySelector(`[data-document-id="${documentId}"]`);
+            if (activeDoc) {
+                activeDoc.classList.add('active');
+            }
+            
+            // 브라우저 내장 PDF 뷰어 사용
+            const userName = document.getElementById('userNameInput').value || 'user';
+            currentPdfUrl = `/api/v1/documents/${documentId}/view?user_id=${encodeURIComponent(userName)}`;
+            
+            // timestamp 추가로 강제 리로드 (브라우저 캐시 우회)
+            let pdfUrl = currentPdfUrl + `&t=${Date.now()}`;
+            
+            // 페이지 번호가 1보다 크면 URL에 페이지 해시 추가
+            if (pageNumber > 1) {
+                pdfUrl += `#page=${pageNumber}`;
+            }
+            
+            // 직접 PDF URL 사용
+            iframe.src = pdfUrl;
+            
+            // iframe 로드 완료 이벤트
+            iframe.onload = function() {
+                loading.style.display = 'none';
+                iframe.style.display = 'block';
+            };
+            
+            // iframe 로드 에러 이벤트
+            iframe.onerror = function() {
+                loading.textContent = 'PDF를 불러오는데 실패했습니다.';
+                loading.style.color = '#dc3545';
+            };
+            
+            // 일정 시간 후에도 로드되지 않으면 강제로 표시 (fallback)
+            setTimeout(() => {
+                if (loading.style.display !== 'none') {
+                    loading.style.display = 'none';
+                    iframe.style.display = 'block';
+                }
+            }, 3000);
+        }
+        
+        function goToPdfPage() {
+            const pageInput = document.getElementById('pdfPageInput');
+            const pageNumber = parseInt(pageInput.value);
+            
+            if (!pageNumber || pageNumber < 1) {
+                alert('올바른 페이지 번호를 입력하세요.');
+                return;
+            }
+            
+            const iframe = document.getElementById('pdfViewerIframe');
+            const loading = document.getElementById('pdfLoading');
+            
+            // 로딩 표시
+            loading.style.display = 'block';
+            iframe.style.display = 'none';
+            
+            // 페이지 해시와 함께 URL 생성
+            // timestamp 추가로 강제 리로드 (브라우저 캐시 우회)
+            let pdfUrl = currentPdfUrl + `&t=${Date.now()}`;
+            if (pageNumber > 1) {
+                pdfUrl += `#page=${pageNumber}`;
+            }
+            
+            // iframe src 변경
+            iframe.src = pdfUrl;
+            
+            // iframe 로드 완료 시 로딩 숨김
+            iframe.onload = function() {
+                loading.style.display = 'none';
+                iframe.style.display = 'block';
+            };
+            
+            // 일정 시간 후에도 로드되지 않으면 강제로 표시 (fallback)
+            setTimeout(() => {
+                if (loading.style.display !== 'none') {
+                    loading.style.display = 'none';
+                    iframe.style.display = 'block';
+                }
+            }, 2000);
+        }
+        
+        function handlePdfPageKeyPress(event) {
+            if (event.key === 'Enter') {
+                goToPdfPage();
+            }
+        }
+
+        function closePdfViewer() {
+            const panel = document.getElementById('pdfViewerPanel');
+            const chatContainer = document.querySelector('.chat-container');
+            const iframe = document.getElementById('pdfViewerIframe');
+            
+            // 패널 닫기
+            panel.classList.remove('open');
+            chatContainer.classList.remove('viewer-open');
+            
+            // iframe 초기화
+            iframe.src = '';
+            
+            // 활성 문서 표시 제거
+            document.querySelectorAll('.document-item').forEach(item => {
+                item.classList.remove('active');
+            });
         }
 
         // 채팅방 이름 편집 함수
