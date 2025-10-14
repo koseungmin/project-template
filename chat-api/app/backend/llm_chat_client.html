@@ -187,6 +187,7 @@
             background: #f8f9fa;
             color: #333;
             border: 1px solid #dee2e6;
+            position: relative;
         }
         .system-message {
             background: #e9ecef;
@@ -508,6 +509,100 @@
         .delete-btn {
             background: #dc3545;
             color: white;
+        }
+        /* 평가 관련 스타일 */
+        .rating-container {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .rating-label {
+            font-size: 12px;
+            color: #6c757d;
+            font-weight: 500;
+        }
+        .star-rating {
+            display: flex;
+            gap: 2px;
+        }
+        .star {
+            cursor: pointer;
+            font-size: 18px;
+            color: #ddd;
+            transition: color 0.2s;
+            user-select: none;
+        }
+        .star:hover,
+        .star.hover {
+            color: #ffc107;
+        }
+        .star.filled {
+            color: #ffc107;
+        }
+        .rating-submitted {
+            font-size: 12px;
+            color: #28a745;
+            font-weight: 500;
+        }
+        .rating-score-display {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .edit-rating-btn {
+            background: transparent;
+            border: none;
+            color: #007bff;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 2px 6px;
+            text-decoration: underline;
+        }
+        .edit-rating-btn:hover {
+            color: #0056b3;
+        }
+        .rating-comment {
+            margin-top: 8px;
+            width: 100%;
+        }
+        .rating-comment-input {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-size: 12px;
+            resize: vertical;
+            min-height: 50px;
+            font-family: inherit;
+        }
+        .rating-comment-input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        .rating-comment-display {
+            font-size: 12px;
+            color: #495057;
+            padding: 6px 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        .rating-submit-btn {
+            margin-top: 8px;
+            padding: 5px 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .rating-submit-btn:hover {
+            background: #0056b3;
         }
     </style>
 </head>
@@ -925,13 +1020,42 @@
             }
             
             const time = new Date(timestamp).toLocaleTimeString();
-            messageDiv.innerHTML = `
-                <div>${content}</div>
-                <div style="font-size: 12px; opacity: 0.7; margin-top: 5px;">${time}</div>
-            `;
+            
+            // AI 메시지인 경우 평가 UI 추가
+            if (type === 'ai' && messageId && !isCancelled) {
+                messageDiv.innerHTML = `
+                    <div>${content}</div>
+                    <div style="font-size: 12px; opacity: 0.7; margin-top: 5px;">${time}</div>
+                    <div class="rating-container" id="rating-${messageId}">
+                        <span class="rating-label">답변 평가:</span>
+                        <div class="star-rating" id="stars-${messageId}">
+                            <span class="star" data-rating="1">★</span>
+                            <span class="star" data-rating="2">★</span>
+                            <span class="star" data-rating="3">★</span>
+                            <span class="star" data-rating="4">★</span>
+                            <span class="star" data-rating="5">★</span>
+                        </div>
+                        <div class="rating-comment">
+                            <textarea class="rating-comment-input" id="comment-${messageId}" placeholder="평가 코멘트 (선택사항)"></textarea>
+                        </div>
+                        <button class="rating-submit-btn" onclick="submitRating('${messageId}')">평가하기</button>
+                    </div>
+                `;
+            } else {
+                messageDiv.innerHTML = `
+                    <div>${content}</div>
+                    <div style="font-size: 12px; opacity: 0.7; margin-top: 5px;">${time}</div>
+                `;
+            }
             
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // AI 메시지의 경우 별 hover 이벤트 추가
+            if (type === 'ai' && messageId && !isCancelled) {
+                addStarHoverEffect(messageId);
+            }
+            
             return messageDiv;
         }
 
@@ -944,11 +1068,23 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        function displayHistory(history) {
+        async function displayHistory(history) {
             const messagesDiv = document.getElementById('chatMessages');
             messagesDiv.innerHTML = '';
             
             console.log(`Loading chat history for ${currentChatId}: ${history.length} messages`);
+            
+            // 채팅의 평가 정보 로드
+            let ratings = {};
+            try {
+                const ratingsResponse = await fetch(`/api/v1/chats/${currentChatId}/ratings`);
+                if (ratingsResponse.ok) {
+                    const ratingsData = await ratingsResponse.json();
+                    ratings = ratingsData.ratings || {};
+                }
+            } catch (error) {
+                console.error('Error loading ratings:', error);
+            }
             
             history.forEach((msg, index) => {
                 let type = msg.role === 'user' ? 'user' : 'ai';
@@ -957,7 +1093,15 @@
                 }
                 const isCancelled = msg.cancelled || false;
                 console.log(`Message ${index + 1}: ${type} - ${msg.content.substring(0, 50)}...`);
-                addMessage(msg.content, type, msg.timestamp, null, isCancelled);
+                
+                // 메시지 ID가 있는 경우 사용 (히스토리에 message_id가 포함되어 있다고 가정)
+                const messageId = msg.message_id || null;
+                addMessage(msg.content, type, msg.timestamp, messageId, isCancelled);
+                
+                // AI 메시지이고 평가가 있는 경우 평가 표시
+                if (type === 'ai' && messageId && ratings[messageId]) {
+                    displayRating(messageId, ratings[messageId]);
+                }
             });
             
             updateStatus(`채팅 기록 로드 완료: ${history.length}개 메시지`);
@@ -1542,6 +1686,216 @@
                 label.textContent = `📎 ${file.name}`;
             }
         });
+
+        // 평가 관련 함수들
+        let selectedRatings = {}; // 메시지별 선택된 별점 저장
+
+        function addStarHoverEffect(messageId) {
+            const stars = document.querySelectorAll(`#stars-${messageId} .star`);
+            stars.forEach((star, index) => {
+                // 클릭 이벤트
+                star.addEventListener('click', () => {
+                    const rating = index + 1;
+                    selectedRatings[messageId] = rating;
+                    updateStarDisplay(messageId, rating);
+                });
+                
+                // 호버 이벤트
+                star.addEventListener('mouseenter', () => {
+                    for (let i = 0; i <= index; i++) {
+                        stars[i].classList.add('hover');
+                    }
+                });
+                
+                star.addEventListener('mouseleave', () => {
+                    stars.forEach(s => s.classList.remove('hover'));
+                });
+            });
+        }
+
+        function updateStarDisplay(messageId, rating) {
+            const stars = document.querySelectorAll(`#stars-${messageId} .star`);
+            stars.forEach((star, index) => {
+                if (index < rating) {
+                    star.classList.add('filled');
+                } else {
+                    star.classList.remove('filled');
+                }
+            });
+        }
+
+        async function submitRating(messageId) {
+            try {
+                const rating = selectedRatings[messageId];
+                if (!rating) {
+                    showMessage('별점을 선택해주세요.', 'error');
+                    return;
+                }
+                
+                const userName = document.getElementById('userNameInput').value || 'user';
+                const comment = document.getElementById(`comment-${messageId}`).value.trim();
+                
+                const response = await fetch('/api/v1/ratings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message_id: messageId,
+                        user_id: userName,
+                        rating_score: rating,
+                        rating_comment: comment || null
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                displayRating(messageId, data.rating);
+                delete selectedRatings[messageId]; // 선택된 별점 초기화
+                showMessage('평가가 저장되었습니다.', 'success');
+                
+            } catch (error) {
+                console.error('Error rating message:', error);
+                showMessage(`평가 저장 중 오류가 발생했습니다: ${error.message}`, 'error');
+            }
+        }
+
+        function displayRating(messageId, ratingData) {
+            const ratingContainer = document.getElementById(`rating-${messageId}`);
+            if (!ratingContainer) return;
+            
+            const score = ratingData.rating_score;
+            const comment = ratingData.rating_comment;
+            
+            let commentHtml = '';
+            if (comment) {
+                // HTML 특수문자 이스케이프
+                const escapedComment = comment
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/\n/g, '<br>');
+                commentHtml = `<div class="rating-comment-display">"${escapedComment}"</div>`;
+            }
+            
+            // 코멘트를 JSON으로 안전하게 인코딩
+            const commentForEdit = comment ? JSON.stringify(comment) : '""';
+            
+            ratingContainer.innerHTML = `
+                <span class="rating-label">답변 평가:</span>
+                <div class="rating-score-display">
+                    <div class="star-rating">
+                        ${Array.from({length: 5}, (_, i) => {
+                            const filled = i < score ? 'filled' : '';
+                            return `<span class="star ${filled}">★</span>`;
+                        }).join('')}
+                    </div>
+                    <span class="rating-submitted">${score}점</span>
+                    <button class="edit-rating-btn" onclick='editRating("${messageId}", ${score}, ${commentForEdit})'>수정</button>
+                </div>
+                ${commentHtml}
+            `;
+        }
+
+        function editRating(messageId, currentScore, currentComment = '') {
+            const ratingContainer = document.getElementById(`rating-${messageId}`);
+            if (!ratingContainer) return;
+            
+            // 현재 선택된 별점 저장
+            selectedRatings[messageId] = currentScore;
+            
+            // HTML 특수문자 이스케이프
+            const escapedComment = (currentComment || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+            
+            // 편집 모드로 변경
+            ratingContainer.innerHTML = `
+                <span class="rating-label">답변 평가 수정:</span>
+                <div class="star-rating" id="stars-${messageId}">
+                    <span class="star" data-rating="1">★</span>
+                    <span class="star" data-rating="2">★</span>
+                    <span class="star" data-rating="3">★</span>
+                    <span class="star" data-rating="4">★</span>
+                    <span class="star" data-rating="5">★</span>
+                </div>
+                <div class="rating-comment">
+                    <textarea class="rating-comment-input" id="comment-${messageId}" placeholder="평가 코멘트 (선택사항)">${escapedComment}</textarea>
+                </div>
+                <button class="rating-submit-btn" onclick="submitUpdatedRating('${messageId}')">수정 완료</button>
+            `;
+            
+            // 현재 점수 표시
+            updateStarDisplay(messageId, currentScore);
+            
+            // 호버 효과 재추가
+            addStarHoverEffect(messageId);
+        }
+
+        async function submitUpdatedRating(messageId) {
+            try {
+                const rating = selectedRatings[messageId];
+                if (!rating) {
+                    showMessage('별점을 선택해주세요.', 'error');
+                    return;
+                }
+                
+                const userName = document.getElementById('userNameInput').value || 'user';
+                const comment = document.getElementById(`comment-${messageId}`).value.trim();
+                
+                const response = await fetch(`/api/v1/ratings/${messageId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id: userName,
+                        rating_score: rating,
+                        rating_comment: comment || null
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                displayRating(messageId, data.rating);
+                delete selectedRatings[messageId]; // 선택된 별점 초기화
+                showMessage('평가가 수정되었습니다.', 'success');
+                
+            } catch (error) {
+                console.error('Error updating rating:', error);
+                showMessage(`평가 수정 중 오류가 발생했습니다: ${error.message}`, 'error');
+            }
+        }
+
+        function showMessage(message, type) {
+            // 기존의 showUploadStatus 함수를 재사용하거나 새로운 알림 표시
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `upload-status ${type}`;
+            statusDiv.textContent = message;
+            statusDiv.style.position = 'fixed';
+            statusDiv.style.top = '20px';
+            statusDiv.style.right = '20px';
+            statusDiv.style.zIndex = '9999';
+            statusDiv.style.display = 'block';
+            
+            document.body.appendChild(statusDiv);
+            
+            // 3초 후 자동 제거
+            setTimeout(() => {
+                if (statusDiv.parentNode) {
+                    statusDiv.parentNode.removeChild(statusDiv);
+                }
+            }, 3000);
+        }
 
         // 채팅방 이름 편집 함수
         function editChatTitle(chatId, event) {

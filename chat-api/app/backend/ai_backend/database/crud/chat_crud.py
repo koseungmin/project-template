@@ -175,7 +175,8 @@ class ChatCRUD:
                     "role": role,
                     "content": msg.message,
                     "timestamp": msg.create_dt.isoformat(),
-                    "cancelled": msg.is_cancelled
+                    "cancelled": msg.is_cancelled,
+                    "message_id": msg.message_id
                 })
             
             # 시간순으로 정렬 (오래된 것부터)
