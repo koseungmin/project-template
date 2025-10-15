@@ -42,6 +42,14 @@ class LLMChatService:
         self.redis_client = redis_client
         self.chat_crud = ChatCRUD(db)  # Repository 인스턴스 생성
         
+        # LLM 제공자 재생성 (chat_crud 전달)
+        try:
+            self.llm_provider = LLMProviderFactory.create_provider(chat_crud=self.chat_crud)
+            logger.info(f"LLM provider re-initialized with chat_crud: {type(self.llm_provider).__name__}")
+        except Exception as e:
+            logger.error(f"Failed to re-initialize LLM provider: {e}")
+            # 기존 provider 사용 (ExternalAPIProvider가 아닌 경우)
+        
         # 취소 상태 관리
         self.is_cancelled = {}
         
@@ -296,8 +304,8 @@ class LLMChatService:
             for i, msg in enumerate(messages):
                 logger.debug(f"  Message {i}: {msg['role']} - {msg['content'][:100]}...")
             
-            # LLM 제공자를 통한 API 호출
-            response = await self.llm_provider.create_completion(messages)
+            # LLM 제공자를 통한 API 호출 (chat_id 전달)
+            response = await self.llm_provider.create_completion(messages, chat_id=chat_id)
             
             return response.choices[0].message.content
             
@@ -466,8 +474,8 @@ class LLMChatService:
                 }
                 return
             
-            # LLM 제공자를 통한 스트리밍 API 호출
-            stream = await self.llm_provider.create_completion(messages, stream=True)
+            # LLM 제공자를 통한 스트리밍 API 호출 (chat_id 전달)
+            stream = await self.llm_provider.create_completion(messages, stream=True, chat_id=chat_id)
             
             ai_response_content = ""
             ai_message_id = gen()

@@ -28,6 +28,7 @@ class Chat(Base):
     create_dt = Column('CREATE_DT', DateTime, nullable=False, server_default=func.now())
     last_message_at = Column('LAST_MESSAGE_AT', DateTime, nullable=True)
     is_active = Column('IS_ACTIVE', Boolean, nullable=False, server_default=true())
+    reviewer_count = Column('REVIEWER_COUNT', Integer, nullable=True, default=0, server_default='0')
 
 
 class ChatMessage(Base):

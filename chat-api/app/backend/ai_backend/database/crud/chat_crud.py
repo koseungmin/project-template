@@ -333,6 +333,10 @@ class ChatCRUD:
                 if external_api_nodes:
                     safe_nodes = self._safe_json_serialize(external_api_nodes)
                     message.external_api_nodes = safe_nodes
+                    
+                    # reviewer_type이 있는지 체크하고 증가
+                    self._check_and_increment_reviewer_count(external_api_nodes, message.chat_id)
+                
                 self.session.commit()
         except Exception as e:
             logger.error(f"Database error updating AI message completed: {str(e)}")
@@ -397,3 +401,74 @@ class ChatCRUD:
         except Exception as e:
             self.session.rollback()
             raise HandledException(ResponseCode.DATABASE_QUERY_ERROR, e=e)
+    
+    def increment_reviewer_count(self, chat_id: str) -> bool:
+        """리뷰어 카운트 증가 (0 -> 1, 1 -> 2)"""
+        try:
+            chat = self.session.query(Chat).filter(Chat.chat_id == chat_id).first()
+            if chat:
+                # 현재 reviewer_count 값에 따라 증가
+                if chat.reviewer_count is None or chat.reviewer_count == 0:
+                    chat.reviewer_count = 1
+                else:
+                    chat.reviewer_count = 2
+                
+                self.session.commit()
+                logger.debug(f"Reviewer count incremented for chat {chat_id}: {chat.reviewer_count}")
+                return True
+            return False
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Database error incrementing reviewer count: {str(e)}")
+            raise HandledException(ResponseCode.DATABASE_QUERY_ERROR, e=e)
+    
+    def get_reviewer_count(self, chat_id: str) -> int:
+        """채팅의 reviewer_count 조회"""
+        try:
+            chat = self.session.query(Chat).filter(Chat.chat_id == chat_id).first()
+            if chat:
+                return chat.reviewer_count or 0  # None인 경우 0 반환
+            return 0
+        except Exception as e:
+            logger.error(f"Database error getting reviewer count: {str(e)}")
+            return 0  # 오류 시 기본값 0 반환
+    
+    def _check_and_increment_reviewer_count(self, external_api_nodes: dict, chat_id: str):
+        """external_api_nodes에서 reviewer_type이 있는지 체크하고 reviewer_count 증가"""
+        try:
+            # external_api_nodes에서 reviewer_type이 있는지 재귀적으로 검색
+            if self._has_reviewer_type(external_api_nodes):
+                logger.info(f"Found reviewer_type in external_api_nodes for chat {chat_id}, incrementing reviewer_count")
+                self.increment_reviewer_count(chat_id)
+        except Exception as e:
+            logger.warning(f"Error checking reviewer_type in external_api_nodes: {str(e)}")
+            # reviewer_type 체크 실패는 전체 프로세스를 중단시키지 않음
+    
+    def _has_reviewer_type(self, data, visited=None) -> bool:
+        """데이터 구조에서 'type': 'reviewer_type'이 있는지 재귀적으로 검색"""
+        if visited is None:
+            visited = set()
+        
+        # 순환 참조 방지
+        if id(data) in visited:
+            return False
+        visited.add(id(data))
+        
+        try:
+            if isinstance(data, dict):
+                # 딕셔너리에서 직접 체크
+                if data.get('type') == 'reviewer_type':
+                    return True
+                # 중첩된 딕셔너리들도 재귀적으로 검색
+                for value in data.values():
+                    if self._has_reviewer_type(value, visited):
+                        return True
+            elif isinstance(data, (list, tuple)):
+                # 리스트/튜플의 각 요소를 재귀적으로 검색
+                for item in data:
+                    if self._has_reviewer_type(item, visited):
+                        return True
+        except Exception as e:
+            logger.debug(f"Error in _has_reviewer_type: {str(e)}")
+        
+        return False

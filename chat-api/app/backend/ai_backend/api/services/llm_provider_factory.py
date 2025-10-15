@@ -163,7 +163,7 @@ class ExternalAPIProvider(BaseLLMProvider):
     """External API Agent provider implementation using LangServe RemoteRunnable"""
     
     def __init__(self, api_url: str, authorization_header: str, 
-                 max_tokens: int = 1000, temperature: float = 0.7):
+                 max_tokens: int = 1000, temperature: float = 0.7, chat_crud=None):
         super().__init__("external_api", max_tokens, temperature)
         
         if not api_url:
@@ -174,6 +174,7 @@ class ExternalAPIProvider(BaseLLMProvider):
         self.api_url = api_url.rstrip('/')
         self.authorization_header = authorization_header
         self.node_data = {}  # 노드 데이터를 메모리에 수집
+        self.chat_crud = chat_crud  # DB 접근을 위한 ChatCRUD 인스턴스
         
         # LangServe RemoteRunnable 초기화
         headers = {
@@ -187,7 +188,7 @@ class ExternalAPIProvider(BaseLLMProvider):
         
         logger.info("External API provider initialized with URL: " + str(self.api_url))
     
-    async def create_completion(self, messages: list, stream: bool = False):
+    async def create_completion(self, messages: list, stream: bool = False, chat_id: str = None):
         """Create completion using External API via LangServe RemoteRunnable"""
         try:
             # OpenAI 형식의 messages를 LangServe 형식으로 변환
@@ -213,8 +214,23 @@ class ExternalAPIProvider(BaseLLMProvider):
                             "type": "human"
                         })
             
+            # additional_kwargs에 기본값들과 reviewer_count 추가
+            additional_kwargs = {
+                "auth_level": "admin"  # 기본 auth_level
+            }
+            
+            if chat_id and self.chat_crud:
+                try:
+                    reviewer_count = self.chat_crud.get_reviewer_count(chat_id)
+                    additional_kwargs["reviewer_count"] = reviewer_count
+                    logger.debug(f"Added reviewer_count to additional_kwargs: {reviewer_count}")
+                except Exception as e:
+                    logger.warning(f"Failed to get reviewer_count for chat {chat_id}: {e}")
+                    additional_kwargs["reviewer_count"] = 0  # 기본값
+            
             request_body = {
-                "messages": langserve_messages
+                "messages": langserve_messages,
+                "additional_kwargs": additional_kwargs
             }
             
             if stream:
@@ -369,7 +385,7 @@ class LLMProviderFactory:
     """Factory class for creating LLM providers"""
     
     @staticmethod
-    def create_provider(provider_type: str = None) -> BaseLLMProvider:
+    def create_provider(provider_type: str = None, chat_crud=None) -> BaseLLMProvider:
         """Create LLM provider based on configuration"""
         
         # 환경 변수에서 제공자 타입 가져오기
@@ -383,7 +399,7 @@ class LLMProviderFactory:
         elif provider_type == "azure_openai":
             return LLMProviderFactory._create_azure_openai_provider()
         elif provider_type == "external_api":
-            return LLMProviderFactory._create_external_api_provider()
+            return LLMProviderFactory._create_external_api_provider(chat_crud)
         else:
             raise HandledException(
                 ResponseCode.LLM_CONFIG_ERROR, 
@@ -425,7 +441,7 @@ class LLMProviderFactory:
         )
     
     @staticmethod
-    def _create_external_api_provider() -> ExternalAPIProvider:
+    def _create_external_api_provider(chat_crud=None) -> ExternalAPIProvider:
         """Create External API provider"""
         api_url = os.getenv("EXTERNAL_API_URL")
         authorization_header = os.getenv("EXTERNAL_API_AUTHORIZATION")
@@ -436,5 +452,6 @@ class LLMProviderFactory:
             api_url=api_url,
             authorization_header=authorization_header,
             max_tokens=max_tokens,
-            temperature=temperature
+            temperature=temperature,
+            chat_crud=chat_crud
         )
