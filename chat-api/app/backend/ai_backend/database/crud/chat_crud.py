@@ -4,12 +4,11 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import desc
-from sqlalchemy.orm import Session
-
 from ai_backend.database.models.chat_models import Chat, ChatMessage
 from ai_backend.types.response.exceptions import HandledException
 from ai_backend.types.response.response_code import ResponseCode
+from sqlalchemy import desc
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +91,7 @@ class ChatCRUD:
         try:
             return self.session.query(Chat).filter(Chat.chat_id == chat_id).first()
         except Exception as e:
-            log_error("Database error getting chat", e)
+            logger.error(f"Database error getting chat: {str(e)}")
             raise HandledException(ResponseCode.DATABASE_QUERY_ERROR, e=e)
     
     def update_chat_title(self, chat_id: str, new_title: str, user_id: str) -> bool:
@@ -111,7 +110,7 @@ class ChatCRUD:
             self.session.commit()
             return True
         except Exception as e:
-            log_error("Database error updating chat title", e)
+            logger.error(f"Database error updating chat title: {str(e)}")
             self.session.rollback()
             raise HandledException(ResponseCode.DATABASE_QUERY_ERROR, e=e)
     
@@ -434,13 +433,32 @@ class ChatCRUD:
             logger.error(f"Database error getting reviewer count: {str(e)}")
             return 0  # 오류 시 기본값 0 반환
     
+    def reset_reviewer_count(self, chat_id: str) -> bool:
+        """리뷰어 카운트를 0으로 초기화"""
+        try:
+            chat = self.session.query(Chat).filter(Chat.chat_id == chat_id).first()
+            if chat:
+                chat.reviewer_count = 0
+                self.session.commit()
+                logger.debug(f"Reviewer count reset to 0 for chat {chat_id}")
+                return True
+            return False
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Database error resetting reviewer count: {str(e)}")
+            raise HandledException(ResponseCode.DATABASE_QUERY_ERROR, e=e)
+    
     def _check_and_increment_reviewer_count(self, external_api_nodes: dict, chat_id: str):
-        """external_api_nodes에서 agent__reviewer가 있는지 체크하고 reviewer_count 증가"""
+        """external_api_nodes에서 agent__reviewer가 있는지 체크하고 reviewer_count 증가 또는 초기화"""
         try:
             # external_api_nodes에서 agent__reviewer가 있는지 재귀적으로 검색
             if self._has_reviewer_type(external_api_nodes):
                 logger.info(f"Found agent__reviewer in external_api_nodes for chat {chat_id}, incrementing reviewer_count")
                 self.increment_reviewer_count(chat_id)
+            else:
+                # agent__reviewer가 없으면 카운트를 0으로 초기화
+                logger.info(f"No agent__reviewer found in external_api_nodes for chat {chat_id}, resetting reviewer_count to 0")
+                self.reset_reviewer_count(chat_id)
         except Exception as e:
             logger.warning(f"Error checking agent__reviewer in external_api_nodes: {str(e)}")
             # agent__reviewer 체크 실패는 전체 프로세스를 중단시키지 않음
