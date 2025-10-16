@@ -4,11 +4,12 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 
+from sqlalchemy import desc
+from sqlalchemy.orm import Session
+
 from ai_backend.database.models.chat_models import Chat, ChatMessage
 from ai_backend.types.response.exceptions import HandledException
 from ai_backend.types.response.response_code import ResponseCode
-from sqlalchemy import desc
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -457,7 +458,7 @@ class ChatCRUD:
         try:
             if isinstance(data, dict):
                 # 딕셔너리에서 직접 체크
-                if data.get('type') == 'reviewer_type':
+                if data.get('node_type') == 'reviewer_type':
                     return True
                 # 중첩된 딕셔너리들도 재귀적으로 검색
                 for value in data.values():
