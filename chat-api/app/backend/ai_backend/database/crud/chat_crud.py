@@ -435,18 +435,18 @@ class ChatCRUD:
             return 0  # 오류 시 기본값 0 반환
     
     def _check_and_increment_reviewer_count(self, external_api_nodes: dict, chat_id: str):
-        """external_api_nodes에서 reviewer_type이 있는지 체크하고 reviewer_count 증가"""
+        """external_api_nodes에서 agent__reviewer가 있는지 체크하고 reviewer_count 증가"""
         try:
-            # external_api_nodes에서 reviewer_type이 있는지 재귀적으로 검색
+            # external_api_nodes에서 agent__reviewer가 있는지 재귀적으로 검색
             if self._has_reviewer_type(external_api_nodes):
-                logger.info(f"Found reviewer_type in external_api_nodes for chat {chat_id}, incrementing reviewer_count")
+                logger.info(f"Found agent__reviewer in external_api_nodes for chat {chat_id}, incrementing reviewer_count")
                 self.increment_reviewer_count(chat_id)
         except Exception as e:
-            logger.warning(f"Error checking reviewer_type in external_api_nodes: {str(e)}")
-            # reviewer_type 체크 실패는 전체 프로세스를 중단시키지 않음
+            logger.warning(f"Error checking agent__reviewer in external_api_nodes: {str(e)}")
+            # agent__reviewer 체크 실패는 전체 프로세스를 중단시키지 않음
     
     def _has_reviewer_type(self, data, visited=None) -> bool:
-        """데이터 구조에서 'type': 'reviewer_type'이 있는지 재귀적으로 검색"""
+        """데이터 구조에서 'type': 'agent__reviewer'이 있는지 재귀적으로 검색"""
         if visited is None:
             visited = set()
         
@@ -458,7 +458,7 @@ class ChatCRUD:
         try:
             if isinstance(data, dict):
                 # 딕셔너리에서 직접 체크
-                if data.get('node_type') == 'reviewer_type':
+                if data.get('node_type') == 'agent__reviewer':
                     return True
                 # 중첩된 딕셔너리들도 재귀적으로 검색
                 for value in data.values():
@@ -470,6 +470,6 @@ class ChatCRUD:
                     if self._has_reviewer_type(item, visited):
                         return True
         except Exception as e:
-            logger.debug(f"Error in _has_reviewer_type: {str(e)}")
+            logger.debug(f"Error in _has_agent__reviewer_type: {str(e)}")
         
         return False
