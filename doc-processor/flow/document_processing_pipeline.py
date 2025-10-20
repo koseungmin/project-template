@@ -6,8 +6,9 @@
 3. GPT를 이용한 이미지 설명 생성
 4. 텍스트와 설명을 합쳐서 Vector DB 구성 (Azure OpenAI 임베딩 사용)
 """
-
 import asyncio
+
+##############ygkim 허깅페이스###################
 import base64
 import io
 import logging
@@ -20,6 +21,7 @@ import fitz  # PyMuPDF
 
 # Azure OpenAI (통합 openai 패키지 사용)
 import openai
+import torch
 
 # 환경 설정
 from config import config
@@ -41,6 +43,7 @@ from pymilvus import (
     connections,
     utility,
 )
+from transformers import AutoModelForVision2Seq, AutoProcessor
 
 from shared_core import (
     Document,
@@ -50,6 +53,10 @@ from shared_core import (
     ProcessingJob,
     ProcessingJobService,
 )
+
+#############################
+
+
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -350,6 +357,7 @@ def capture_page_images(document_path: str, output_dir: str = None, max_pages: i
         # PDF를 이미지로 변환 (페이지 수 제한)
         if max_pages:
             logger.info(f"🖼️ 페이지 수 제한: 처음 {max_pages}페이지만 이미지 변환")
+            logger.info(f"🖼️ document_path {document_path}")
             images = convert_from_path(document_path, dpi=300, first_page=1, last_page=max_pages)
         else:
             images = convert_from_path(document_path, dpi=300)
@@ -381,6 +389,60 @@ def capture_page_images(document_path: str, output_dir: str = None, max_pages: i
 # ===============================
 # 3단계: GPT를 이용한 이미지 설명 생성 (별도 API 버전 사용)
 # ===============================
+
+#######################ygkim 허깅페이스######################
+def describe_image_with_qwen_local(image_path):
+    """
+   Qwen/Qwen2-VL-7B-Instruct,Qwen/Qwen2.5-VL-7B-Instruct  (Vision) 모델을 로컬에서 실행하여 이미지를 분석하고 설명을 생성합니다.
+    """
+    model_name = "Qwen/Qwen2-VL-7B-Instruct"  # Hugging Face 모델명 (Vision + Language 지원)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # 모델과 프로세서 로드
+    processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+    # model = AutoModelForVision2Seq.from_pretrained(model_name, torch_dtype=torch.float16, device_map="auto", trust_remote_code=True)
+    model = AutoModelForVision2Seq.from_pretrained(
+        model_name,
+        dtype=torch.float16,
+        device_map="auto",
+        trust_remote_code=True
+    )
+    
+    # 이미지 불러오기
+    image = Image.open(image_path).convert("RGB")
+
+    # 프롬프트 정의
+    prompt = "이 이미지의 내용을 자세히 설명해주세요. 텍스트, 차트, 그래프, 표 등 모든 요소를 포함하여 설명해주세요."
+
+    # 입력 생성
+    inputs = processor(text=prompt, images=image, return_tensors="pt").to(device)
+
+    # 모델 추론
+    with torch.no_grad():
+        generated_ids = model.generate(**inputs, max_new_tokens=512)
+
+    # 결과 디코딩
+    description = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+
+    # 페이지 번호 추출
+    try:
+        page_number = int(Path(image_path).stem.split('_')[-1].replace('page_', ''))
+    except ValueError:
+        page_number = None
+
+    description_data = {
+        "description": description,
+        "page_number": page_number,
+        "generation_timestamp": datetime.now().isoformat()
+    }
+
+    print(f"📝 페이지 {page_number} 설명 생성 완료")
+    print(f"description: {description}")
+
+    return description_data
+
+##############################################        
+
 @task(name="generate_image_descriptions")
 def generate_image_descriptions(image_paths: List[str]) -> Dict[str, Any]:
     """이미지들을 GPT Vision API를 통해 설명을 생성합니다. (GPT Vision 전용 API 버전)"""
@@ -414,7 +476,16 @@ def generate_image_descriptions(image_paths: List[str]) -> Dict[str, Any]:
                             "content": [
                                 {
                                     "type": "text",
-                                    "text": "이 이미지의 내용을 자세히 설명해주세요. 텍스트, 차트, 그래프, 표 등 모든 요소를 포함하여 설명해주세요."
+                                    # "text": "이 이미지의 내용을 자세히 설명해주세요. 텍스트, 차트, 그래프, 표 등 모든 요소를 포함하여 설명해주세요."
+                                    "text": '''이 이미지의 내용을 자세히 설명해주세요. 텍스트, 차트, 그래프, 표, 사진, 그림 등 모든 요소를 포함하여 설명해주세요. 
+                                                단, 순서는 [텍스트], [차트], [그래프], [표], [사진], [그림] 순으로 있을 때만 보여주고,
+                                                텍스트는 [텍스트]구분자 다음에 넣고,
+                                                차트는 [차트]구분자 다음에 넣고,
+                                                그래프는 [그래프]구분자 다음에 넣고,
+                                                표는 [표]구분자 다음에 넣고,
+                                                사진은 [사진]구분자 다음,
+                                                그림은 [그림]구분자 다음에 넣어주세요
+                                            '''
                                 },
                                 {
                                     "type": "image_url",
@@ -436,6 +507,17 @@ def generate_image_descriptions(image_paths: List[str]) -> Dict[str, Any]:
                 }
                 
                 logger.info(f"📝 페이지 {descriptions[image_path]['page_number']} 설명 생성 완료")
+                logger.info(f"description: {description}")
+
+
+                #######################ygkim 허깅페이스######################
+                '''
+                logger.info(f"📝 허깅페이스 시작:{image_path}")
+                result = describe_image_with_qwen_local(image_path)
+                logger.info(f"허깅페이스 description: {result}")
+                logger.info(f"📝 허깅페이스 끝")
+                '''
+
                 
             except Exception as e:
                 logger.error(f"❌ 이미지 설명 생성 실패 ({image_path}): {str(e)}")
@@ -470,8 +552,20 @@ def create_vector_database(
     logger.info(f"🗄️ Vector DB 구성 시작 (Azure OpenAI 임베딩 사용)")
     
     try:
+        embedding_image=''
+
         # Milvus Lite 연결
-        connections.connect("default", uri=config.MILVUS_URI)
+        #ygkim connections.connect("default", uri=config.MILVUS_URI)
+
+        print(f"✅ 호스트 기반 Milvus 서버 연결")
+
+        # 호스트 기반 Milvus 서버 연결
+        connections.connect(
+            alias="default",
+            host=config.MILVUS_HOST,
+            port=config.MILVUS_PORT
+        )
+        print(f"✅ Milvus 서버에 연결됨: {config.MILVUS_HOST}:{config.MILVUS_PORT}")
         
         # 기존 컬렉션이 있다면 삭제 (차원 불일치 해결)
         collection_name = config.MILVUS_COLLECTION_NAME
@@ -482,14 +576,15 @@ def create_vector_database(
         # 컬렉션 스키마 정의 (페이지별 통합 벡터)
         fields = [
             FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
-            FieldSchema(name="document_path", dtype=DataType.VARCHAR, max_length=500),
+            FieldSchema(name="document_path", dtype=DataType.VARCHAR, max_length=1000), 
             FieldSchema(name="page_number", dtype=DataType.INT64),
             FieldSchema(name="content_type", dtype=DataType.VARCHAR, max_length=50),  # "combined"
             FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=15000),  # 통합 콘텐츠
             FieldSchema(name="text_content", dtype=DataType.VARCHAR, max_length=10000),  # 원본 텍스트
             FieldSchema(name="image_description", dtype=DataType.VARCHAR, max_length=10000),  # 이미지 설명
             FieldSchema(name="image_path", dtype=DataType.VARCHAR, max_length=1000),  # 이미지 파일 경로
-            FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=3072)  # Azure OpenAI text-embedding-3-large
+            FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=3072),  # Azure OpenAI text-embedding-3-large
+            FieldSchema(name="embedding_image", dtype=DataType.FLOAT_VECTOR, dim=3072)  # 이미지만 뽑는 경우
         ]
         
         schema = CollectionSchema(fields, "Document processing pipeline vector collection")
@@ -504,11 +599,16 @@ def create_vector_database(
             "params": {}
         }
         collection.create_index("embedding", index_params)
+
+        #ygkim 추가
+        collection.create_index("embedding_image", index_params)
+
         logger.info(f"📚 새 컬렉션 생성: {collection_name} (3072차원)")
         
         # 데이터 준비 - 페이지별 통합 벡터 방식
         documents_to_insert = []
         embeddings_to_insert = []
+        embeddings_to_insert_image = []
         
         # 페이지별로 텍스트와 이미지 설명을 통합
         page_data_map = {}
@@ -542,15 +642,26 @@ def create_vector_database(
         for page_num, page_data in page_data_map.items():
             # 텍스트와 이미지 설명을 결합
             combined_content = ""
+            combined_content_input = ""
+            combined_content_image = ""
             if page_data["text_content"]:
                 combined_content += f"텍스트: {page_data['text_content']}"
             if page_data["image_description"]:
                 if combined_content:
                     combined_content += " "
                 combined_content += f"이미지: {page_data['image_description']}"
+                combined_content_image += f"이미지: {page_data['image_description']}"
             
             if combined_content.strip():
+                # ygkim 
+                logger.warning(f"=====combined_content:{combined_content}")
+
                 embedding = get_azure_openai_embedding(combined_content)
+                embedding_image = get_azure_openai_embedding(combined_content_image)
+                combined_content_input = get_azure_openai_embedding("수시모집 문제 출제 회의 하는 사진을 찾아주세요. [사진]안의 내용을 중심으로 찾아주세요")
+                logger.warning("-------------------------------------------------------------------------")
+                # logger.warning(f"combined_content_input:{combined_content_input}")
+
                 
                 documents_to_insert.append({
                     "document_path": document_path,
@@ -562,6 +673,7 @@ def create_vector_database(
                     "image_path": page_data["image_path"]
                 })
                 embeddings_to_insert.append(embedding)
+                embeddings_to_insert_image.append(embedding_image)
         
         # 데이터 삽입
         if documents_to_insert:
@@ -577,7 +689,8 @@ def create_vector_database(
                 [doc["text_content"] for doc in documents_to_insert],
                 [doc["image_description"] for doc in documents_to_insert],
                 [doc["image_path"] for doc in documents_to_insert],
-                embeddings_to_insert
+                embeddings_to_insert,
+                embeddings_to_insert_image
             ]
             
             collection.insert(insert_data)
@@ -1027,9 +1140,19 @@ def document_processing_pipeline(document_path: str, skip_image_processing: bool
             logger.info("💾 5단계: PostgreSQL에 청크 데이터 저장")
             try:
                 # Milvus에서 방금 삽입된 데이터를 읽어와서 PostgreSQL에 저장
-                connections.connect("default", uri=config.MILVUS_URI)
+                # connections.connect("default", uri=config.MILVUS_URI)
+
+                # ygkim 호스트 기반 Milvus 서버 연결
+                connections.connect(
+                    alias="default",
+                    host=config.MILVUS_HOST,
+                    port=config.MILVUS_PORT
+                )
+                logger.info("💾 5단계: PostgreSQL에 청크 데이터 저장 connections.connect")
                 collection = Collection(config.MILVUS_COLLECTION_NAME)
+                logger.info("💾 5단계: PostgreSQL에 청크 데이터 저장 collection = Collection")
                 collection.load()
+                logger.info("💾 5단계: PostgreSQL에 청크 데이터 저장 collection.load()")
                 
                 # 현재 문서의 모든 청크 데이터 조회
                 results = collection.query(
