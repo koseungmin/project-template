@@ -3,21 +3,24 @@
 Milvus 벡터 검색 실행 스크립트 (Prefect 없이)
 """
 
-import sys
-import os
-from pathlib import Path
-from typing import List, Dict, Any
 import logging
+import os
+import sys
 import time
+from pathlib import Path
+from typing import Any, Dict, List
 
 # 프로젝트 루트를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent))
 
-# Milvus
-from pymilvus import Collection, connections, utility
-
 # Azure OpenAI (임베딩용)
 import openai
+
+# 환경 설정 ygkim
+from flow.config import config
+
+# Milvus
+from pymilvus import Collection, connections, utility
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -71,7 +74,19 @@ def _get_embedding_dim_from_schema(collection: Collection) -> int:
 
 def debug_and_prepare_collection() -> Collection:
     """컬렉션 로드, 인덱스/스키마 점검 및 준비 (Milvus Lite)."""
-    connections.connect("default", uri=MILVUS_URI)
+    #ygkim connections.connect("default", uri=MILVUS_URI)
+
+    print(f"✅ 호스트 기반 Milvus 서버 연결")
+
+    # 호스트 기반 Milvus 서버 연결
+    connections.connect(
+        alias="default",
+        host=config.MILVUS_HOST,
+        port=config.MILVUS_PORT
+    )
+    print(f"✅ Milvus 서버에 연결됨: {config.MILVUS_HOST}:{config.MILVUS_PORT}")
+
+
     collection = Collection(MILVUS_COLLECTION_NAME)
 
     # flush/load 보장
@@ -124,7 +139,17 @@ def choose_search_params(collection: Collection) -> Dict[str, Any]:
 def check_milvus_connection():
     """Milvus Lite 연결 상태를 확인합니다."""
     try:
-        connections.connect("default", uri=MILVUS_URI)
+        
+        # ygkim connections.connect("default", uri=MILVUS_URI)
+
+        print(f"✅ 호스트 기반 Milvus 서버 연결")
+
+        # 호스트 기반 Milvus 서버 연결
+        connections.connect(
+            alias="default",
+            host=config.MILVUS_HOST,
+            port=config.MILVUS_PORT
+        )
         logger.info(f"✅ Milvus Lite 연결 성공: {MILVUS_URI}")
         return True
     except Exception as e:
@@ -162,6 +187,7 @@ def search_combined_vectors(query: str, top_k: int = 5) -> Dict[str, Any]:
 
         # 쿼리 임베딩 및 차원 검증
         query_embedding = get_azure_openai_embedding(query)
+        logger.info(f"⏱️ 검색: {query_embedding}")
         validate_query_embedding_dim(collection, query_embedding)
 
         # 인덱스에 맞는 검색 파라미터 선택
@@ -238,8 +264,9 @@ def search_text_only(query: str, top_k: int = 5) -> Dict[str, Any]:
                         "score": float(hit.score),
                         "document_path": hit.entity.get("document_path"),
                         "page_number": hit.entity.get("page_number"),
-                        "content_type": "text_only",
-                        "text_content": text_content,
+                        "text_content": "text_only",
+                        # "text_content": text_content,
+                        "Content": text_content,
                         "image_path": hit.entity.get("image_path")
                     })
         
