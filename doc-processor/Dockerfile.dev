@@ -1,0 +1,49 @@
+# Prefect Python 애플리케이션을 위한 Dockerfile (Development Server - Offline)
+FROM python:3.12-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# 작업 디렉토리 설정
+WORKDIR /app
+
+# 시스템 패키지 업데이트 및 필요한 패키지 설치
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    libpq-dev \
+    poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy shared_core library first
+COPY ../shared_core /app/shared_core
+
+# Copy requirements file
+COPY requirements-freeze.txt ./
+
+# Copy wheel files (폐쇄망 환경용)
+COPY wheels/ /app/wheels/
+
+# Install packages from wheel files
+RUN pip install --upgrade pip && \
+    pip install --no-index --find-links /app/wheels -r requirements-freeze.txt
+
+# 애플리케이션 코드 복사
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p /app/logs /app/extracted_image && \
+    chmod -R 755 /app
+
+# 포트 노출
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# 기본 명령어 (컨테이너 실행 시 오버라이드 가능)
+CMD ["python", "-c", "print('Prefect Python app container ready')"]

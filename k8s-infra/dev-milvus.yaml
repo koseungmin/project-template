@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: milvus-dev
+  namespace: default
+  labels:
+    app: milvus
+    environment: development
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: milvus
+      environment: development
+  template:
+    metadata:
+      labels:
+        app: milvus
+        environment: development
+    spec:
+      containers:
+      - name: milvus
+        image: milvusdb/milvus:latest
+        ports:
+        - containerPort: 19530
+          name: grpc
+        - containerPort: 9091
+          name: rest
+        env:
+        - name: ETCD_USE_EMBED
+          value: "true"
+        - name: ETCD_DATA_DIR
+          value: "/var/lib/milvus/etcd"
+        - name: COMMON_STORAGETYPE
+          value: "local"
+        - name: LOCAL_STORAGE_PATH
+          value: "/var/lib/milvus"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: milvus-storage
+          mountPath: /var/lib/milvus
+      volumes:
+      - name: milvus-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: milvus-service
+  namespace: default
+  labels:
+    app: milvus
+    environment: development
+spec:
+  type: ClusterIP
+  ports:
+  - port: 19530
+    targetPort: 19530
+    protocol: TCP
+    name: grpc
+  - port: 9091
+    targetPort: 9091
+    protocol: TCP
+    name: rest
+  selector:
+    app: milvus
+    environment: development

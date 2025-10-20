@@ -1,0 +1,139 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-server-dev
+  namespace: default
+  labels:
+    app: prefect-server
+    environment: development
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prefect-server
+      environment: development
+  template:
+    metadata:
+      labels:
+        app: prefect-server
+        environment: development
+    spec:
+      containers:
+      - name: prefect-server
+        image: prefecthq/prefect:2-latest
+        imagePullPolicy: IfNotPresent
+        command: ["prefect", "server", "start", "--host", "0.0.0.0"]
+        ports:
+        - containerPort: 4200
+          name: api
+        - containerPort: 4201
+          name: ui
+        env:
+        - name: PREFECT_DISABLE_TELEMETRY
+          value: "true"
+        - name: PREFECT_API_URL
+          value: "http://0.0.0.0:4200/api"
+        - name: PREFECT_UI_API_URL
+          value: "http://0.0.0.0:4200/api"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 4200
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4200
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doc-processor-dev
+  namespace: default
+  labels:
+    app: doc-processor
+    environment: development
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: doc-processor
+      environment: development
+  template:
+    metadata:
+      labels:
+        app: doc-processor
+        environment: development
+    spec:
+      containers:
+      - name: doc-processor
+        image: doc-processor-dev:latest
+        imagePullPolicy: Never  # 폐쇄망에서 로컬 이미지 사용
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        
+        # Environment variables for development
+        env:
+        - name: PREFECT_API_URL
+          value: "http://prefect-server-service:4200/api"
+        - name: DATABASE_HOST
+          value: "postgres-service"
+        - name: MILVUS_HOST
+          value: "milvus-service"
+        
+        # Resource limits for development
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        
+        # Volume mounts for development
+        volumeMounts:
+        - name: extracted-image-storage
+          mountPath: /app/extracted_image
+        - name: logs-storage
+          mountPath: /app/logs
+      
+      # Volumes for development
+      volumes:
+      - name: extracted-image-storage
+        emptyDir: {}
+      - name: logs-storage
+        emptyDir: {}
+      
+      # Restart policy
+      restartPolicy: Always
