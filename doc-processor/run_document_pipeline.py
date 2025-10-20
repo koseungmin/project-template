@@ -17,8 +17,8 @@ sys.path.insert(0, str(flow_path))
 parent_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(parent_dir))
 
-from config import config
-from document_processing_pipeline import document_processing_pipeline
+from flow.config import config
+from flow.document_processing_pipeline import document_processing_pipeline
 
 
 def main():
