@@ -301,8 +301,17 @@ class LLMChatService:
             for i, msg in enumerate(messages):
                 logger.debug(f"  Message {i}: {msg['role']} - {msg['content'][:100]}...")
             
-            # LLM 제공자를 통한 API 호출
-            response = await self.llm_provider.create_completion(messages)
+            # LLM 제공자를 통한 API 호출 (ExternalAPIProvider인 경우 chat_id 전달)
+            if hasattr(self.llm_provider, 'create_completion'):
+                # create_completion 메서드의 시그니처를 확인하여 chat_id 지원 여부 판단
+                import inspect
+                sig = inspect.signature(self.llm_provider.create_completion)
+                if 'chat_id' in sig.parameters:
+                    response = await self.llm_provider.create_completion(messages, chat_id=chat_id)
+                else:
+                    response = await self.llm_provider.create_completion(messages)
+            else:
+                response = await self.llm_provider.create_completion(messages)
             
             return response.choices[0].message.content
             
@@ -471,8 +480,17 @@ class LLMChatService:
                 }
                 return
             
-            # LLM 제공자를 통한 스트리밍 API 호출
-            stream = await self.llm_provider.create_completion(messages, stream=True)
+            # LLM 제공자를 통한 스트리밍 API 호출 (ExternalAPIProvider인 경우 chat_id 전달)
+            if hasattr(self.llm_provider, 'create_completion'):
+                # create_completion 메서드의 시그니처를 확인하여 chat_id 지원 여부 판단
+                import inspect
+                sig = inspect.signature(self.llm_provider.create_completion)
+                if 'chat_id' in sig.parameters:
+                    stream = await self.llm_provider.create_completion(messages, stream=True, chat_id=chat_id)
+                else:
+                    stream = await self.llm_provider.create_completion(messages, stream=True)
+            else:
+                stream = await self.llm_provider.create_completion(messages, stream=True)
             
             ai_response_content = ""
             ai_message_id = gen()
