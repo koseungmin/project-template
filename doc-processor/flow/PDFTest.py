@@ -1,5 +1,8 @@
 # PDFTest.py
 '''
+pip freeze > requirements.txt
+pip install -r requirements.txt
+
 python -m pip download numpy==1.25.0
 python -m pip install --upgrade pip
 python -m pip install ./numpy.whl
@@ -37,4 +40,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
