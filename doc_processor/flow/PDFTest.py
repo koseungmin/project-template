@@ -1,4 +1,16 @@
-# test.py
+# PDFTest.py
+'''
+python -m pip download numpy==1.25.0
+python -m pip install --upgrade pip
+python -m pip install ./numpy.whl
+
+deactivate
+cd doc-processor
+venv_py312\Scripts\activate
+python ./run_document_pipeline.py 
+python ./flow/PDFGenerator.py 
+python ./flow/PDFTest.py 
+'''
 import uuid
 
 from PDFGenerator import PDFGenerator
@@ -25,3 +37,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
