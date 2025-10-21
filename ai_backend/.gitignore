@@ -1,0 +1,23 @@
+.DS_Store
+.idea
+.vscode
+__pycache__
+*.log
+
+# Logs directory (로컬 개발용)
+logs/
+app/backend/logs/
+
+# Python package metadata
+*.egg-info/
+build/
+dist/
+# Environment variables
+.env
+.env.local
+.env.production
+.env.development
+app/backend/.env
+
+# Upload files
+app/backend/uploads/

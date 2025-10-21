@@ -25,9 +25,9 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# chat-api wheel 파일 준비
-print_step "chat-api 서비스용 wheel 파일을 준비합니다..."
-cd chat-api/app/backend
+# ai_backend wheel 파일 준비
+print_step "ai_backend 서비스용 wheel 파일을 준비합니다..."
+cd ai_backend
 
 # wheels 디렉토리 생성
 mkdir -p wheels
@@ -42,17 +42,17 @@ if [ -d "venv_py312" ]; then
     # 의존성도 함께 다운로드
     pip download -r requirements.txt -d wheels
     
-    print_step "chat-api wheel 파일 준비 완료: $(ls wheels/*.whl | wc -l)개 파일"
+    print_step "ai_backend wheel 파일 준비 완료: $(ls wheels/*.whl | wc -l)개 파일"
 else
     print_error "venv_py312가 존재하지 않습니다."
     exit 1
 fi
 
-cd ../../..
+cd ..
 
-# doc-processor wheel 파일 준비
-print_step "doc-processor 서비스용 wheel 파일을 준비합니다..."
-cd doc-processor
+# doc_processor wheel 파일 준비
+print_step "doc_processor 서비스용 wheel 파일을 준비합니다..."
+cd doc_processor
 
 # wheels 디렉토리 생성
 mkdir -p wheels
@@ -67,7 +67,7 @@ if [ -d "venv_py312" ]; then
     # 의존성도 함께 다운로드
     pip download -r requirements.txt -d wheels
     
-    print_step "doc-processor wheel 파일 준비 완료: $(ls wheels/*.whl | wc -l)개 파일"
+    print_step "doc_processor wheel 파일 준비 완료: $(ls wheels/*.whl | wc -l)개 파일"
 else
     print_error "venv_py312가 존재하지 않습니다."
     exit 1
@@ -99,8 +99,8 @@ echo ""
 echo "🎉 모든 wheel 파일 준비가 완료되었습니다!"
 echo ""
 echo "생성된 wheel 파일들:"
-echo "  - chat-api/app/backend/wheels/ ($(ls chat-api/app/backend/wheels/*.whl 2>/dev/null | wc -l)개 파일)"
-echo "  - doc-processor/wheels/ ($(ls doc-processor/wheels/*.whl 2>/dev/null | wc -l)개 파일)"
+echo "  - ai_backend/wheels/ ($(ls ai_backend/wheels/*.whl 2>/dev/null | wc -l)개 파일)"
+echo "  - doc_processor/wheels/ ($(ls doc_processor/wheels/*.whl 2>/dev/null | wc -l)개 파일)"
 echo "  - shared_core/wheels/ ($(ls shared_core/wheels/*.whl 2>/dev/null | wc -l)개 파일)"
 echo ""
 echo "이제 ./deploy-dev.sh를 실행하여 배포할 수 있습니다."

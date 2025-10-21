@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-worker
+  namespace: prefect-system
+  labels:
+    app: prefect-worker
+    stage: "3"
+spec:
+  replicas: 3  # 워커 수 조정 가능
+  selector:
+    matchLabels:
+      app: prefect-worker
+  template:
+    metadata:
+      labels:
+        app: prefect-worker
+        stage: "3"
+    spec:
+      containers:
+      - name: prefect-worker
+        image: prefect-python-app:latest  # 실제 이미지 태그로 변경 필요
+        command: ["python", "/app/base/start_worker.py"]
+        workingDir: /app
+        env:
+        - name: PREFECT_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: prefect-config
+              key: PREFECT_API_URL
+        - name: PREFECT_DISABLE_TELEMETRY
+          valueFrom:
+            configMapKeyRef:
+              name: prefect-config
+              key: PREFECT_DISABLE_TELEMETRY
+        - name: MILVUS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: prefect-config
+              key: MILVUS_HOST
+        - name: MILVUS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: prefect-config
+              key: MILVUS_PORT
+        - name: MINIO_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: prefect-config
+              key: MINIO_HOST
+        - name: MINIO_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: prefect-config
+              key: MINIO_PORT
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: prefect-config
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: prefect-config
+              key: MINIO_SECRET_KEY
+        - name: AZURE_OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: prefect-secrets
+              key: azure-openai-api-key
+        - name: AZURE_OPENAI_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: prefect-secrets
+              key: azure-openai-endpoint
+        - name: AZURE_OPENAI_DEPLOYMENT
+          valueFrom:
+            secretKeyRef:
+              name: prefect-secrets
+              key: azure-openai-deployment
+        - name: AZURE_OPENAI_VERSION
+          valueFrom:
+            secretKeyRef:
+              name: prefect-secrets
+              key: azure-openai-version
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import requests; requests.get('http://localhost:8000/health')"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import requests; requests.get('http://localhost:8000/health')"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prefect-worker
+  namespace: prefect-system
+  labels:
+    app: prefect-worker
+spec:
+  selector:
+    app: prefect-worker
+  ports:
+  - name: health
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP 

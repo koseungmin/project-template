@@ -1,6 +1,6 @@
 # 폐쇄망 환경 배포 가이드
 
-이 가이드는 폐쇄망 환경에서 chat-api와 doc-processor 서비스를 Kubernetes에 배포하는 방법을 설명합니다.
+이 가이드는 폐쇄망 환경에서 ai_backend와 doc_processor 서비스를 Kubernetes에 배포하는 방법을 설명합니다.
 
 ## 🚨 중요 사항
 
@@ -20,21 +20,21 @@ docker --version
 kubectl cluster-info
 
 # venv 패키지 확인
-ls -la chat-api/app/backend/venv_py312/lib/python3.12/site-packages/
-ls -la doc-processor/venv_py312/lib/python3.12/site-packages/
+ls -la ai_backend/venv_py312/lib/python3.12/site-packages/
+ls -la doc_processor/venv_py312/lib/python3.12/site-packages/
 ```
 
 ### 2. 필요한 패키지들
 각 서비스의 `venv_py312`에 다음 패키지들이 설치되어 있어야 합니다:
 
-**chat-api 서비스:**
+**ai_backend 서비스:**
 - fastapi, uvicorn, gunicorn
 - sqlalchemy, psycopg2-binary
 - openai, langchain, langserve
 - redis, pydantic, pandas
 - 기타 requirements.txt에 명시된 패키지들
 
-**doc-processor 서비스:**
+**doc_processor 서비스:**
 - prefect, python-dotenv
 - psycopg2-binary, sqlalchemy
 - pymilvus, milvus-lite
@@ -59,13 +59,13 @@ chmod +x prepare-wheels.sh deploy-dev.sh
 ### 1-1. Wheel 파일 준비 (수동)
 ```bash
 # 각 서비스의 wheel 파일을 수동으로 준비하는 경우
-cd chat-api/app/backend
+cd ai_backend
 mkdir -p wheels
 source venv_py312/bin/activate
 pip download -r requirements.txt -d wheels
 cd ../../..
 
-cd doc-processor
+cd doc_processor
 mkdir -p wheels
 source venv_py312/bin/activate
 pip download -r requirements.txt -d wheels
@@ -77,8 +77,8 @@ cd ..
 #### Step 1: shared_core 복사
 ```bash
 # shared_core를 각 서비스에 복사
-cp -r shared_core chat-api/app/backend/
-cp -r shared_core doc-processor/
+cp -r shared_core ai_backend/
+cp -r shared_core doc_processor/
 ```
 
 #### Step 2: Wheel 파일 준비
@@ -89,16 +89,16 @@ cp -r shared_core doc-processor/
 
 #### Step 3: Docker 이미지 빌드
 ```bash
-# chat-api 이미지 빌드
-cd chat-api/app/backend
+# ai_backend 이미지 빌드
+cd ai_backend
 # wheels 디렉토리와 requirements-freeze.txt가 존재하는지 확인
-docker build -f Dockerfile.dev -t chat-api-dev:latest .
+docker build -f Dockerfile.dev -t ai_backend-dev:latest .
 cd ../../..
 
-# doc-processor 이미지 빌드
-cd doc-processor
+# doc_processor 이미지 빌드
+cd doc_processor
 # wheels 디렉토리와 requirements-freeze.txt가 존재하는지 확인
-docker build -f Dockerfile.dev -t doc-processor-dev:latest .
+docker build -f Dockerfile.dev -t doc_processor-dev:latest .
 cd ..
 ```
 
@@ -110,10 +110,10 @@ kubectl apply -f k8s-infra/dev-redis.yaml
 kubectl apply -f k8s-infra/dev-milvus.yaml
 
 # 애플리케이션 서비스 배포
-kubectl apply -f chat-api/app/backend/k8s/dev-deployment.yaml
-kubectl apply -f chat-api/app/backend/k8s/dev-service.yaml
-kubectl apply -f doc-processor/k8s/dev-deployment.yaml
-kubectl apply -f doc-processor/k8s/dev-service.yaml
+kubectl apply -f ai_backend/k8s/dev-deployment.yaml
+kubectl apply -f ai_backend/k8s/dev-service.yaml
+kubectl apply -f doc_processor/k8s/dev-deployment.yaml
+kubectl apply -f doc_processor/k8s/dev-service.yaml
 ```
 
 ## 🔍 배포 확인
@@ -130,11 +130,11 @@ kubectl get services -l environment=development
 
 ### 3. 로그 확인
 ```bash
-# chat-api 로그
-kubectl logs -f deployment/chat-api-dev
+# ai_backend 로그
+kubectl logs -f deployment/ai_backend-dev
 
-# doc-processor 로그
-kubectl logs -f deployment/doc-processor-dev
+# doc_processor 로그
+kubectl logs -f deployment/doc_processor-dev
 
 # prefect-server 로그
 kubectl logs -f deployment/prefect-server-dev
@@ -143,20 +143,20 @@ kubectl logs -f deployment/prefect-server-dev
 ## 🌐 서비스 접속
 
 ### NodePort를 통한 외부 접속
-- **chat-api**: http://localhost:30080
+- **ai_backend**: http://localhost:30080
 - **prefect-server UI**: http://localhost:30421
-- **doc-processor**: http://localhost:30081
+- **doc_processor**: http://localhost:30081
 
 ### Port Forwarding을 통한 접속
 ```bash
-# chat-api 포트 포워딩
-kubectl port-forward svc/chat-api-service 8000:8000
+# ai_backend 포트 포워딩
+kubectl port-forward svc/ai_backend-service 8000:8000
 
 # prefect-server 포트 포워딩
 kubectl port-forward svc/prefect-server-service 4201:4201
 
-# doc-processor 포트 포워딩
-kubectl port-forward svc/doc-processor-service 8001:8000
+# doc_processor 포트 포워딩
+kubectl port-forward svc/doc_processor-service 8001:8000
 ```
 
 ## 🛠️ 문제 해결
@@ -210,25 +210,25 @@ kubectl get endpoints
 
 ```
 project-template/
-├── chat-api/
+├── ai_backend/
 │   ├── app/backend/
-│   │   ├── Dockerfile.dev          # chat-api Docker 파일
+│   │   ├── Dockerfile.dev          # ai_backend Docker 파일
 │   │   ├── venv_py312/            # Python 가상환경
 │   │   ├── wheels/                # wheel 파일들 (폐쇄망용)
 │   │   ├── requirements-freeze.txt # 패키지 목록
 │   │   └── k8s/
-│   │       ├── dev-deployment.yaml # chat-api K8s 배포 파일
-│   │       └── dev-service.yaml   # chat-api K8s 서비스 파일
+│   │       ├── dev-deployment.yaml # ai_backend K8s 배포 파일
+│   │       └── dev-service.yaml   # ai_backend K8s 서비스 파일
 │   └── shared_core/               # 복사된 공통 라이브러리
-├── doc-processor/
-│   ├── Dockerfile.dev             # doc-processor Docker 파일
+├── doc_processor/
+│   ├── Dockerfile.dev             # doc_processor Docker 파일
 │   ├── venv_py312/               # Python 가상환경
 │   ├── wheels/                   # wheel 파일들 (폐쇄망용)
 │   ├── requirements-freeze.txt   # 패키지 목록
 │   ├── shared_core/              # 복사된 공통 라이브러리
 │   └── k8s/
-│       ├── dev-deployment.yaml   # doc-processor K8s 배포 파일
-│       └── dev-service.yaml     # doc-processor K8s 서비스 파일
+│       ├── dev-deployment.yaml   # doc_processor K8s 배포 파일
+│       └── dev-service.yaml     # doc_processor K8s 서비스 파일
 ├── shared_core/                  # 원본 공통 라이브러리
 ├── k8s-infra/                   # 인프라 K8s 파일들
 │   ├── dev-postgres.yaml        # PostgreSQL 배포 파일

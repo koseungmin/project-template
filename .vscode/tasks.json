@@ -8,7 +8,7 @@
             "args": [
                 "install", 
                 "-r", 
-                "${workspaceFolder}/chat-api/app/backend/requirements.txt"
+                "${workspaceFolder}/ai_backend/requirements.txt"
             ],
             "group": "build",
             "presentation": {
@@ -20,7 +20,7 @@
                 "clear": false
             },
             "options": {
-                "cwd": "${workspaceFolder}/chat-api/app/backend"
+                "cwd": "${workspaceFolder}/ai_backend"
             },
             "problemMatcher": []
         },
@@ -31,7 +31,7 @@
             "args": [
                 "install", 
                 "-r", 
-                "${workspaceFolder}/doc-processor/requirements.txt"
+                "${workspaceFolder}/doc_processor/requirements.txt"
             ],
             "group": "build",
             "presentation": {
@@ -43,7 +43,7 @@
                 "clear": false
             },
             "options": {
-                "cwd": "${workspaceFolder}/doc-processor"
+                "cwd": "${workspaceFolder}/doc_processor"
             },
             "problemMatcher": []
         },
@@ -87,7 +87,7 @@
             "args": [
                 "-m", 
                 "uvicorn", 
-                "ai_backend.main:app",
+                "src.main:app",
                 "--host", "0.0.0.0",
                 "--port", "8000",
                 "--reload"
@@ -102,9 +102,9 @@
                 "clear": false
             },
             "options": {
-                "cwd": "${workspaceFolder}/chat-api/app/backend",
+                "cwd": "${workspaceFolder}/ai_backend",
                 "env": {
-                    "PYTHONPATH": "${workspaceFolder}/chat-api/app/backend:${workspaceFolder}"
+                    "PYTHONPATH": "${workspaceFolder}/ai_backend:${workspaceFolder}"
                 }
             },
             "isBackground": true,
@@ -138,9 +138,9 @@
                 "clear": false
             },
             "options": {
-                "cwd": "${workspaceFolder}/doc-processor",
+                "cwd": "${workspaceFolder}/doc_processor",
                 "env": {
-                    "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}"
+                    "PYTHONPATH": "${workspaceFolder}/doc_processor:${workspaceFolder}"
                 }
             },
             "isBackground": true,
@@ -163,9 +163,9 @@
                 "clear": false
             },
             "options": {
-                "cwd": "${workspaceFolder}/doc-processor",
+                "cwd": "${workspaceFolder}/doc_processor",
                 "env": {
-                    "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}"
+                    "PYTHONPATH": "${workspaceFolder}/doc_processor:${workspaceFolder}"
                 }
             },
             "isBackground": true,
@@ -188,9 +188,9 @@
                 "clear": false
             },
             "options": {
-                "cwd": "${workspaceFolder}/doc-processor",
+                "cwd": "${workspaceFolder}/doc_processor",
                 "env": {
-                    "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}"
+                    "PYTHONPATH": "${workspaceFolder}/doc_processor:${workspaceFolder}"
                 }
             },
             "problemMatcher": []
@@ -212,9 +212,9 @@
                 "clear": false
             },
             "options": {
-                "cwd": "${workspaceFolder}/doc-processor",
+                "cwd": "${workspaceFolder}/doc_processor",
                 "env": {
-                    "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}"
+                    "PYTHONPATH": "${workspaceFolder}/doc_processor:${workspaceFolder}"
                 }
             },
             "problemMatcher": []
@@ -236,9 +236,9 @@
                 "clear": false
             },
             "options": {
-                "cwd": "${workspaceFolder}/doc-processor",
+                "cwd": "${workspaceFolder}/doc_processor",
                 "env": {
-                    "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}"
+                    "PYTHONPATH": "${workspaceFolder}/doc_processor:${workspaceFolder}"
                 }
             },
             "problemMatcher": []
@@ -261,9 +261,9 @@
                 "clear": false
             },
             "options": {
-                "cwd": "${workspaceFolder}/doc-processor",
+                "cwd": "${workspaceFolder}/doc_processor",
                 "env": {
-                    "PYTHONPATH": "${workspaceFolder}/doc-processor:${workspaceFolder}"
+                    "PYTHONPATH": "${workspaceFolder}/doc_processor:${workspaceFolder}"
                 }
             },
             "problemMatcher": []

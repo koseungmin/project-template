@@ -1,0 +1,46 @@
+.DS_Store
+.idea
+.vscode
+__pycache__
+*.log
+
+# Logs directory (로컬 개발용)
+logs/
+app/backend/logs/
+
+# Python package metadata
+*.egg-info/
+build/
+dist/
+# Environment variables
+.env
+.env.local
+.env.production
+.env.development
+app/backend/.env
+
+# Upload files
+app/backend/uploads/
+
+# Prefect configuration with sensitive data
+prefect.yaml.example
+
+# Python virtual environment
+venv/
+env/
+.venv/
+
+# Database files
+milvus_lite.db
+*.db
+
+# Output directories and generated files
+extracted_image/
+output/
+
+# Test and sample files
+test.pdf
+*.pdf
+
+# Kubernetes configuration with sensitive data
+k8s/configmap.yaml.example

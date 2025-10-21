@@ -35,8 +35,8 @@
     "python.analysis.extraPaths": [
         "${workspaceFolder}",
         "${workspaceFolder}/shared_core",
-        "${workspaceFolder}/chat-api/app/backend",
-        "${workspaceFolder}/doc-processor"
+        "${workspaceFolder}/ai_backend",
+        "${workspaceFolder}/doc_processor"
     ],
     "python.envFile": "${workspaceFolder}/.env",
     "files.associations": {
@@ -51,12 +51,12 @@
     },
     "git.ignoreLimitWarning": true,
     "terminal.integrated.env.osx": {
-        "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/shared_core:${workspaceFolder}/chat-api/app/backend:${workspaceFolder}/doc-processor"
+        "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/shared_core:${workspaceFolder}/ai_backend:${workspaceFolder}/doc_processor"
     },
     "terminal.integrated.env.linux": {
-        "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/shared_core:${workspaceFolder}/chat-api/app/backend:${workspaceFolder}/doc-processor"
+        "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/shared_core:${workspaceFolder}/ai_backend:${workspaceFolder}/doc_processor"
     },
     "terminal.integrated.env.windows": {
-        "PYTHONPATH": "${workspaceFolder};${workspaceFolder}\\shared_core;${workspaceFolder}\\chat-api\\app\\backend;${workspaceFolder}\\doc-processor"
+        "PYTHONPATH": "${workspaceFolder};${workspaceFolder}\\shared_core;${workspaceFolder}\\ai_backend\\app\\backend;${workspaceFolder}\\doc_processor"
     }
 }
