@@ -74,6 +74,10 @@ class PDFGenerator:
             filename (str): 저장할 PDF 파일명
             pages (list[int] | None): 출력할 페이지 번호 (1부터 시작). None이면 전체
         """
+        
+        # 폴더가 없으면 생성
+        os.makedirs("./extracted_pdf", exist_ok=True)
+        
         width, height = self.page_size
         total_pages = len(self.pages_lines)
         if pages is None:
@@ -115,3 +119,4 @@ if __name__ == "__main__":
 
     # 특정 페이지만 생성 (1,3페이지만)
     pdf_gen.generate("./extracted_pdf/pages_added_partial.pdf", pages=[2, 3])
+
