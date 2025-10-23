@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # - "/api": API Gateway 뒤에서 실행 시
     # - "/v1": 버전별 API 경로가 있는 경우
     # - "/ai-backend": Kubernetes Ingress path가 있는 경우
-    # 개발: "" (직접 접근)
+    # 개발: "" (직접 접근, 라우터에서 /api/v1 사용)
     # 프로덕션: "" 또는 "/api" (인프라에 따라)
     app_root_path: str = Field(default="", env="APP_ROOT_PATH")
     
@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     database_name: str = Field(default="chat_db", env="DATABASE_NAME")
     database_username: str = Field(default="postgres", env="DATABASE_USERNAME")
     database_password: str = Field(default="password", env="DATABASE_PASSWORD")
+    database_schema: str = Field(default="public", env="DATABASE_SCHEMA")
     # database_echo: bool = Field(default=False, env="DATABASE_ECHO")
     # database_echo_pool: bool = Field(default=False, env="DATABASE_ECHO_POOL")
     # database_case_sensitive: bool = Field(default=False, env="DATABASE_CASE_SENSITIVE")
@@ -140,6 +141,15 @@ class Settings(BaseSettings):
     # - Kubernetes: /app/uploads (PVC 마운트 경로)
     # - 온프레미스: /var/uploads (표준 위치)
     upload_base_path: str = Field(default="./uploads", env="UPLOAD_BASE_PATH")
+    
+    # Storage Configuration
+    # ==========================================
+    # 파일 저장소 타입
+    # - local: 로컬 파일시스템 (개발 환경)
+    # - s3: AWS S3 (프로덕션 환경)
+    # - gcs: Google Cloud Storage (프로덕션 환경)
+    # - azure: Azure Blob Storage (프로덕션 환경)
+    storage_type: str = Field(default="local", env="STORAGE_TYPE")
     
     # 파일 업로드 최대 크기 (바이트)
     # - 기본값: 50MB (52428800 bytes)
