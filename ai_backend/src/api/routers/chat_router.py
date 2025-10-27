@@ -1,15 +1,28 @@
 # _*_ coding: utf-8 _*_
 """LLM Chat REST API endpoints (Redis 기반, 확장 가능)."""
+import asyncio
+import json
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from src.core.dependencies import get_llm_chat_service
-from src.api.services.llm_chat_service import LLMChatService
-from src.types.request.chat_request import UserMessageRequest, ClearConversationRequest, CreateChatRequest
 from pydantic import BaseModel
-from src.types.response.chat_response import AIResponse, ConversationHistoryResponse, ConversationClearedResponse, ErrorResponse, CreateChatResponse, ChatListResponse
+from src.api.services.llm_chat_service import LLMChatService
+from src.core.dependencies import get_llm_chat_service
+from src.types.request.chat_request import (
+    ClearConversationRequest,
+    CreateChatRequest,
+    UserMessageRequest,
+)
+from src.types.response.chat_response import (
+    AIResponse,
+    ChatListResponse,
+    ConversationClearedResponse,
+    ConversationHistoryResponse,
+    CreateChatResponse,
+    ErrorResponse,
+)
 from src.types.response.exceptions import HandledException
-import logging
-import json
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["llm-chat"])
@@ -50,43 +63,117 @@ async def send_message_stream(
     """스트리밍 방식으로 메시지를 전송하고 AI 응답을 받습니다 (SSE)."""
 
     async def generate_stream():
+        # 청크를 전달하기 위한 큐
+        chunk_queue = asyncio.Queue()
+        stream_active = asyncio.Event()
+        stream_active.set()
+        
+        # Heartbeat task (10초마다 전송, Nginx 타임아웃 60초 대비)
+        async def heartbeat_sender():
+            try:
+                elapsed_time = 0
+                heartbeat_messages = {
+                    10: "사용자의 의도를 파악하고 있습니다...",
+                    30: "정확한 답변을 찾기 위해 노력하고 있습니다...",
+                    50: "거의 다 완료되었습니다. 조금만 기다려주세요..."
+                }
+                
+                while stream_active.is_set():
+                    await asyncio.sleep(10)  # 10초마다 heartbeat
+                    elapsed_time += 10
+                    
+                    # 경과 시간에 따라 적절한 메시지 선택
+                    message = None
+                    if elapsed_time in heartbeat_messages:
+                        message = heartbeat_messages[elapsed_time]
+                    else:
+                        # 50초 이후에는 계속 마지막 메시지 표시
+                        message = heartbeat_messages[50]
+                    
+                    heartbeat_data = {
+                        'type': 'heartbeat',
+                        'message': message,
+                        'timestamp': llm_chat_service.get_current_timestamp()
+                    }
+                    await chunk_queue.put(heartbeat_data)
+                    logger.debug(f"Sent heartbeat for chat {chat_id} at {elapsed_time}s: {message}")
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.warning(f"Heartbeat sender error: {e}")
+        
+        # AI 스트림 수신 task
+        async def ai_stream_receiver():
+            try:
+                # 사용자 메시지 저장
+                user_message_id = llm_chat_service.save_user_message(
+                    chat_id, request.message, request.user_id
+                )
+
+                # 사용자 메시지 전송
+                user_message_data = {
+                    'type': 'user_message',
+                    'message_id': user_message_id,
+                    'content': request.message,
+                    'user_id': request.user_id,
+                    'timestamp': llm_chat_service.get_current_timestamp()
+                }
+                await chunk_queue.put(user_message_data)
+
+                # AI 응답 생성 (스트리밍)
+                async for chunk in llm_chat_service.generate_ai_response_stream(chat_id, request.user_id):
+                    await chunk_queue.put(chunk)
+                
+                # 완료 신호
+                await chunk_queue.put(None)
+                
+            except HandledException as e:
+                # HandledException은 스트림으로 전달 (연결 유지)
+                logger.error(f"HandledException in streaming: {str(e)}")
+                from src.types.response.chat_response import StreamErrorResponse
+                error_response = StreamErrorResponse(
+                    code=e.code,
+                    message=e.message,
+                    content=f"메시지 처리 중 오류가 발생했습니다: {e.message}",
+                    timestamp=llm_chat_service.get_current_timestamp(),
+                    chat_id=chat_id
+                )
+                await chunk_queue.put(error_response.dict())
+                await chunk_queue.put(None)
+            except Exception as e:
+                # 예상치 못한 예외도 스트림으로 전달 (연결 유지)
+                logger.error(f"Unexpected error in streaming: {str(e)}")
+                from src.types.response.chat_response import StreamErrorResponse
+                error_response = StreamErrorResponse(
+                    code=-2,  # UNDEFINED_ERROR
+                    message='정의되지 않은 오류입니다.',
+                    content=f"메시지 처리 중 예상치 못한 오류가 발생했습니다: {str(e)}",
+                    timestamp=llm_chat_service.get_current_timestamp(),
+                    chat_id=chat_id
+                )
+                await chunk_queue.put(error_response.dict())
+                await chunk_queue.put(None)
+        
+        # 두 task를 병렬로 실행
+        heartbeat_task = asyncio.create_task(heartbeat_sender())
+        ai_stream_task = asyncio.create_task(ai_stream_receiver())
+        
         try:
-            # 사용자 메시지 저장
-            user_message_id = llm_chat_service.save_user_message(
-                chat_id, request.message, request.user_id
-            )
-
-            # 사용자 메시지 스트림 전송
-            yield f"data: {json.dumps({'type': 'user_message', 'message_id': user_message_id, 'content': request.message, 'user_id': request.user_id, 'timestamp': llm_chat_service.get_current_timestamp()}, ensure_ascii=False)}\n\n"
-
-            # AI 응답 생성 (스트리밍)
-            async for chunk in llm_chat_service.generate_ai_response_stream(chat_id, request.user_id):
+            # 큐에서 받은 데이터를 yield
+            while True:
+                chunk = await chunk_queue.get()
+                if chunk is None:  # 완료 신호
+                    break
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
-
-        except HandledException as e:
-            # HandledException은 스트림으로 전달 (연결 유지)
-            logger.error(f"HandledException in streaming: {str(e)}")
-            from src.types.response.chat_response import StreamErrorResponse
-            error_response = StreamErrorResponse(
-                code=e.code,
-                message=e.message,
-                content=f"메시지 처리 중 오류가 발생했습니다: {e.message}",
-                timestamp=llm_chat_service.get_current_timestamp(),
-                chat_id=chat_id
-            )
-            yield f"data: {json.dumps(error_response.dict(), ensure_ascii=False)}\n\n"
-        except Exception as e:
-            # 예상치 못한 예외도 스트림으로 전달 (연결 유지)
-            logger.error(f"Unexpected error in streaming: {str(e)}")
-            from src.types.response.chat_response import StreamErrorResponse
-            error_response = StreamErrorResponse(
-                code=-2,  # UNDEFINED_ERROR
-                message='정의되지 않은 오류입니다.',
-                content=f"메시지 처리 중 예상치 못한 오류가 발생했습니다: {str(e)}",
-                timestamp=llm_chat_service.get_current_timestamp(),
-                chat_id=chat_id
-            )
-            yield f"data: {json.dumps(error_response.dict(), ensure_ascii=False)}\n\n"
+        finally:
+            # 리소스 정리
+            stream_active.clear()
+            heartbeat_task.cancel()
+            ai_stream_task.cancel()
+            try:
+                await asyncio.gather(heartbeat_task, ai_stream_task, return_exceptions=True)
+            except Exception as e:
+                logger.warning(f"Task cleanup error: {e}")
 
     return StreamingResponse(
         generate_stream(),
