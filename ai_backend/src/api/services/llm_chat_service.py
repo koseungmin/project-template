@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from src.api.services.llm_provider_factory import BaseLLMProvider, LLMProviderFactory
 from src.database.base import Database
 from src.database.crud.chat_crud import ChatCRUD
+from src.database.crud.user_crud import UserCRUD
 from src.database.models.chat_models import ChatMessage
 from src.types.response.exceptions import HandledException
 from src.types.response.response_code import ResponseCode
@@ -38,11 +39,12 @@ class LLMChatService:
         self.db = db  # 이제 Session 객체
         self.redis_client = redis_client
         self.chat_crud = ChatCRUD(db)  # Repository 인스턴스 생성
+        self.user_crud = UserCRUD(db)  # User Repository 인스턴스 생성
         
-        # LLM 제공자 재생성 (chat_crud 전달)
+        # LLM 제공자 재생성 (chat_crud, user_crud 전달)
         try:
-            self.llm_provider = LLMProviderFactory.create_provider(chat_crud=self.chat_crud)
-            logger.info(f"LLM provider re-initialized with chat_crud: {type(self.llm_provider).__name__}")
+            self.llm_provider = LLMProviderFactory.create_provider(chat_crud=self.chat_crud, user_crud=self.user_crud)
+            logger.info(f"LLM provider re-initialized with chat_crud, user_crud: {type(self.llm_provider).__name__}")
         except Exception as e:
             logger.error(f"Failed to re-initialize LLM provider: {e}")
             # 기존 provider 사용 (ExternalAPIProvider가 아닌 경우)
@@ -301,7 +303,8 @@ class LLMChatService:
             for i, msg in enumerate(messages):
                 logger.debug(f"  Message {i}: {msg['role']} - {msg['content'][:100]}...")
             
-            # LLM 제공자를 통한 API 호출 (ExternalAPIProvider인 경우 chat_id 전달)
+            # LLM 제공자를 통한 API 호출 (ExternalAPIProvider인 경우 chat_id, user_id 전달)
+            # user_id는 _generate_ai_response에서 지원하지 않으므로 기본값 사용
             if hasattr(self.llm_provider, 'create_completion'):
                 # create_completion 메서드의 시그니처를 확인하여 chat_id 지원 여부 판단
                 import inspect
@@ -480,12 +483,14 @@ class LLMChatService:
                 }
                 return
             
-            # LLM 제공자를 통한 스트리밍 API 호출 (ExternalAPIProvider인 경우 chat_id 전달)
+            # LLM 제공자를 통한 스트리밍 API 호출 (ExternalAPIProvider인 경우 chat_id, user_id 전달)
             if hasattr(self.llm_provider, 'create_completion'):
-                # create_completion 메서드의 시그니처를 확인하여 chat_id 지원 여부 판단
+                # create_completion 메서드의 시그니처를 확인하여 chat_id, user_id 지원 여부 판단
                 import inspect
                 sig = inspect.signature(self.llm_provider.create_completion)
-                if 'chat_id' in sig.parameters:
+                if 'chat_id' in sig.parameters and 'user_id' in sig.parameters:
+                    stream = await self.llm_provider.create_completion(messages, stream=True, chat_id=chat_id, user_id=user_id)
+                elif 'chat_id' in sig.parameters:
                     stream = await self.llm_provider.create_completion(messages, stream=True, chat_id=chat_id)
                 else:
                     stream = await self.llm_provider.create_completion(messages, stream=True)

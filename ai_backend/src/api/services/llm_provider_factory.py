@@ -6,10 +6,10 @@ import os
 from typing import Any, AsyncGenerator, Dict, Optional
 
 import aiohttp
-from src.types.response.exceptions import HandledException
-from src.types.response.response_code import ResponseCode
 from langserve import RemoteRunnable
 from openai import AsyncOpenAI
+from src.types.response.exceptions import HandledException
+from src.types.response.response_code import ResponseCode
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +163,7 @@ class ExternalAPIProvider(BaseLLMProvider):
     """External API Agent provider implementation using LangServe RemoteRunnable"""
     
     def __init__(self, api_url: str, authorization_header: str, 
-                 max_tokens: int = 1000, temperature: float = 0.7, chat_crud=None):
+                 max_tokens: int = 1000, temperature: float = 0.7, chat_crud=None, user_crud=None):
         super().__init__("external_api", max_tokens, temperature)
         
         if not api_url:
@@ -175,6 +175,7 @@ class ExternalAPIProvider(BaseLLMProvider):
         self.authorization_header = authorization_header
         self.node_data = {}  # 노드 데이터를 메모리에 수집
         self.chat_crud = chat_crud  # DB 접근을 위한 ChatCRUD 인스턴스
+        self.user_crud = user_crud  # DB 접근을 위한 UserCRUD 인스턴스
         
         # LangServe RemoteRunnable 초기화
         headers = {
@@ -188,7 +189,7 @@ class ExternalAPIProvider(BaseLLMProvider):
         
         logger.info("External API provider initialized with URL: " + str(self.api_url))
     
-    async def create_completion(self, messages: list, stream: bool = False, chat_id: str = None):
+    async def create_completion(self, messages: list, stream: bool = False, chat_id: str = None, user_id: str = None):
         """Create completion using External API via LangServe RemoteRunnable"""
         try:
             # OpenAI 형식의 messages를 LangServe 형식으로 변환
@@ -227,6 +228,16 @@ class ExternalAPIProvider(BaseLLMProvider):
                 except Exception as e:
                     logger.warning(f"Failed to get reviewer_count for chat {chat_id}: {e}")
                     additional_kwargs["reviewer_count"] = 0  # 기본값
+            
+            # user_id로 user 정보 조회하여 site_list 추가
+            if user_id and self.user_crud:
+                try:
+                    user = self.user_crud.get_user(user_id)
+                    if user and user.site_list:
+                        additional_kwargs["site_list"] = user.site_list
+                        logger.debug(f"Added site_list to additional_kwargs for user {user_id}: {user.site_list}")
+                except Exception as e:
+                    logger.warning(f"Failed to get site_list for user {user_id}: {e}")
             
             request_body = {
                 "messages": langserve_messages,
@@ -385,7 +396,7 @@ class LLMProviderFactory:
     """Factory class for creating LLM providers"""
     
     @staticmethod
-    def create_provider(provider_type: str = None, chat_crud=None) -> BaseLLMProvider:
+    def create_provider(provider_type: str = None, chat_crud=None, user_crud=None) -> BaseLLMProvider:
         """Create LLM provider based on configuration"""
         
         # 환경 변수에서 제공자 타입 가져오기
@@ -399,7 +410,7 @@ class LLMProviderFactory:
         elif provider_type == "azure_openai":
             return LLMProviderFactory._create_azure_openai_provider()
         elif provider_type == "external_api":
-            return LLMProviderFactory._create_external_api_provider(chat_crud)
+            return LLMProviderFactory._create_external_api_provider(chat_crud, user_crud)
         else:
             raise HandledException(
                 ResponseCode.LLM_CONFIG_ERROR, 
@@ -441,7 +452,7 @@ class LLMProviderFactory:
         )
     
     @staticmethod
-    def _create_external_api_provider(chat_crud=None) -> ExternalAPIProvider:
+    def _create_external_api_provider(chat_crud=None, user_crud=None) -> ExternalAPIProvider:
         """Create External API provider"""
         api_url = os.getenv("EXTERNAL_API_URL")
         authorization_header = os.getenv("EXTERNAL_API_AUTHORIZATION")
@@ -453,5 +464,6 @@ class LLMProviderFactory:
             authorization_header=authorization_header,
             max_tokens=max_tokens,
             temperature=temperature,
-            chat_crud=chat_crud
+            chat_crud=chat_crud,
+            user_crud=user_crud
         )
