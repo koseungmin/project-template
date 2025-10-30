@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -26,7 +27,7 @@ class ChatCRUD:
                 chat_id=chat_id,
                 chat_title=chat_title,
                 user_id=user_id,
-                create_dt=datetime.now(),
+                create_dt=datetime.now(ZoneInfo("Asia/Seoul")),
                 is_active=True  # 활성 상태로 생성
             )
             self.session.add(chat)
@@ -58,7 +59,7 @@ class ChatCRUD:
                 message_type=message_type,
                 status=status,
                 is_cancelled=is_cancelled,
-                create_dt=datetime.now()
+                create_dt=datetime.now(ZoneInfo("Asia/Seoul"))
             )
             self.session.add(chat_message)
             self.session.commit()
@@ -358,7 +359,7 @@ class ChatCRUD:
         try:
             chat = self.get_chat(chat_id)
             if chat:
-                chat.last_message_at = datetime.now()
+                chat.last_message_at = datetime.now(ZoneInfo("Asia/Seoul"))
                 self.session.commit()
         except Exception as e:
             self.session.rollback()

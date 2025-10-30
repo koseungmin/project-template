@@ -1,11 +1,13 @@
-from typing import Optional, Dict, Any, TypedDict, Union
-import datetime as dt
 import collections
+import datetime as dt
+from typing import Any, Dict, Optional, TypedDict, Union
+from zoneinfo import ZoneInfo
 
-from .response_code import ResponseCode
 from pydantic import BaseModel, Field, model_validator
 from pydantic.json import timedelta_isoformat
+
 from .exceptions import HandledException
+from .response_code import ResponseCode
 
 __all__ = [
     "BaseResponse",
@@ -47,7 +49,7 @@ class CommonResponse(BaseResponse):
     @classmethod
     def _init(cls, values):
         if isinstance(values, dict):
-            values["timestamp"] = dt.datetime.utcnow()
+            values["timestamp"] = dt.datetime.now(ZoneInfo("Asia/Seoul"))
             rc = ResponseCode.SUCCESS
             values["code"] = rc.code
             values["message"] = rc.message
@@ -78,6 +80,6 @@ class ErrorResponse(BaseResponse):
                 values["message"] = ResponseCode.UNDEFINED_ERROR.message
             
             # 기본값 설정
-            values["timestamp"] = dt.datetime.utcnow()
+            values["timestamp"] = dt.datetime.now(ZoneInfo("Asia/Seoul"))
             values["traceId"] = None
         return values

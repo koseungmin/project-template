@@ -3,13 +3,14 @@
 import logging
 from datetime import datetime
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
-from src.database.models.group_models import Group
-from src.types.response.exceptions import HandledException
-from src.types.response.response_code import ResponseCode
 from sqlalchemy import and_, desc, func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
+from src.database.models.group_models import Group
+from src.types.response.exceptions import HandledException
+from src.types.response.response_code import ResponseCode
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class GroupCRUD:
                 description=description,
                 owner_id=owner_id,
                 max_members=max_members,
-                create_dt=datetime.now(),
+                create_dt=datetime.now(ZoneInfo("Asia/Seoul")),
                 is_active=True
             )
             self.db.add(group)
@@ -104,7 +105,7 @@ class GroupCRUD:
                 if max_members is not None:
                     group.max_members = max_members
                 
-                group.update_dt = datetime.now()
+                group.update_dt = datetime.now(ZoneInfo("Asia/Seoul"))
                 self.db.commit()
                 self.db.refresh(group)
             return group
@@ -118,7 +119,7 @@ class GroupCRUD:
             group = self.get_group(group_id)
             if group:
                 group.is_active = False
-                group.update_dt = datetime.now()
+                group.update_dt = datetime.now(ZoneInfo("Asia/Seoul"))
                 self.db.commit()
                 return True
             return False
@@ -132,7 +133,7 @@ class GroupCRUD:
             group = self.get_group(group_id)
             if group:
                 group.is_active = True
-                group.update_dt = datetime.now()
+                group.update_dt = datetime.now(ZoneInfo("Asia/Seoul"))
                 self.db.commit()
                 return True
             return False
@@ -151,7 +152,7 @@ class GroupCRUD:
                 ).delete()
                 
                 group.is_deleted = True
-                group.update_dt = datetime.now()
+                group.update_dt = datetime.now(ZoneInfo("Asia/Seoul"))
                 self.db.commit()
                 return True
             return False

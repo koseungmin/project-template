@@ -3,11 +3,12 @@
 import logging
 from datetime import datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
 
+from sqlalchemy.orm import Session
 from src.database.models.chat_models import ChatMessage, MessageRating
 from src.types.response.exceptions import HandledException
 from src.types.response.response_code import ResponseCode
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class RatingCRUD:
                 user_id=user_id,
                 rating_score=rating_score,
                 rating_comment=rating_comment,
-                create_dt=datetime.now()
+                create_dt=datetime.now(ZoneInfo("Asia/Seoul"))
             )
             self.session.add(rating)
             self.session.commit()
@@ -118,7 +119,7 @@ class RatingCRUD:
             rating.rating_score = rating_score
             if rating_comment is not None:
                 rating.rating_comment = rating_comment
-            rating.updated_at = datetime.now()
+            rating.updated_at = datetime.now(ZoneInfo("Asia/Seoul"))
             
             self.session.commit()
             self.session.refresh(rating)

@@ -1,6 +1,12 @@
 # _*_ coding: utf-8 _*_
 """Global exception handlers for FastAPI application."""
-from fastapi import FastAPI, Request, HTTPException
+import datetime as dt
+import logging
+import uuid
+from zoneinfo import ZoneInfo
+
+import redis.exceptions
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import (
     http_exception_handler,
@@ -10,17 +16,11 @@ from fastapi.exceptions import RequestValidationError as HTTPRequestValidationEr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse
 from starlette.status import HTTP_200_OK
-import datetime as dt
-import uuid
-import logging
-import redis.exceptions
+
+from ..types.response.chat_response import ErrorResponse, StreamErrorResponse
 
 # from autologging import traced, logged
-from ..types.response.exceptions import (
-    HandledException,
-    UnHandledException,
-)
-from ..types.response.chat_response import ErrorResponse, StreamErrorResponse
+from ..types.response.exceptions import HandledException, UnHandledException
 from ..utils.logging_utils import log_error
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ def create_error_response(
         code=code,
         message=message,
         content=content,
-        timestamp=dt.datetime.utcnow().isoformat(),
+        timestamp=dt.datetime.now(ZoneInfo("Asia/Seoul")).isoformat(),
         trace_id=trace_id or str(uuid.uuid4())
     )
 
@@ -60,7 +60,7 @@ def create_stream_error_response(
         code=code,
         message=message,
         content=content,
-        timestamp=dt.datetime.utcnow().isoformat(),
+        timestamp=dt.datetime.now(ZoneInfo("Asia/Seoul")).isoformat(),
         chat_id=chat_id
     )
 

@@ -1,14 +1,16 @@
 # _*_ coding: utf-8 _*_
 """User CRUD operations with database."""
-from sqlalchemy.orm import Session
-from sqlalchemy import desc, and_
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-from typing import Optional, List
+import logging
 from datetime import datetime
+from typing import List, Optional
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import and_, desc
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session
 from src.database.models.user_models import User
 from src.types.response.exceptions import HandledException
 from src.types.response.response_code import ResponseCode
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ class UserCRUD:
                 user_id=user_id,
                 employee_id=employee_id,
                 name=name,
-                create_dt=datetime.now(),
+                create_dt=datetime.now(ZoneInfo("Asia/Seoul")),
                 is_active=True
             )
             self.db.add(user)
@@ -96,7 +98,7 @@ class UserCRUD:
                         )
                     user.employee_id = employee_id
                 
-                user.update_dt = datetime.now()
+                user.update_dt = datetime.now(ZoneInfo("Asia/Seoul"))
                 self.db.commit()
                 self.db.refresh(user)
             return user
@@ -110,7 +112,7 @@ class UserCRUD:
             user = self.get_user(user_id)
             if user:
                 user.is_active = False
-                user.update_dt = datetime.now()
+                user.update_dt = datetime.now(ZoneInfo("Asia/Seoul"))
                 self.db.commit()
                 return True
             return False
@@ -124,7 +126,7 @@ class UserCRUD:
             user = self.get_user(user_id)
             if user:
                 user.is_active = True
-                user.update_dt = datetime.now()
+                user.update_dt = datetime.now(ZoneInfo("Asia/Seoul"))
                 self.db.commit()
                 return True
             return False
@@ -138,7 +140,7 @@ class UserCRUD:
             user = self.get_user(user_id)
             if user:
                 user.is_deleted = True
-                user.update_dt = datetime.now()
+                user.update_dt = datetime.now(ZoneInfo("Asia/Seoul"))
                 self.db.commit()
                 return True
             return False

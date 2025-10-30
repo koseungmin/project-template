@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 import tiktoken
 from openai import AsyncOpenAI
@@ -388,7 +389,7 @@ class LLMChatService:
     
     def get_current_timestamp(self) -> str:
         """현재 타임스탬프 반환"""
-        return datetime.now().isoformat()
+        return datetime.now(ZoneInfo("Asia/Seoul")).isoformat()
     
     def get_active_chats(self) -> List[str]:
         """현재 생성 중인 채팅 목록 반환 (DB에서)"""
