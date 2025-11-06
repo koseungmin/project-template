@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from src.config import settings
 from src.core.global_exception_handlers import set_global_exception_handlers
+from src.middleware.auth_middleware import JWTAuthMiddleware
 
 
 def cleanup_old_logs():
@@ -277,6 +278,13 @@ def create_app():
     # Global exception handlers 등록
     app = set_global_exception_handlers(app)
     logger.info("Global exception handlers registered successfully")
+    
+    # JWT 인증 미들웨어 등록
+    if settings.jwt_enabled:
+        app.add_middleware(JWTAuthMiddleware)
+        logger.info("JWT authentication middleware registered successfully")
+    else:
+        logger.warning("JWT authentication is disabled")
   
     # API 버전 경로 설정
     # APP_ROOT_PATH로 관리하므로 라우터에서는 /v1만 사용

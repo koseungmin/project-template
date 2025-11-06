@@ -36,6 +36,8 @@ pandas>=2.0.0
 validators>=0.22.0
 python-multipart>=0.0.20
 PyYAML>=6.0.0
+PyJWT>=2.8.0
+cryptography>=41.0.0
 
 # Logging
 coloredlogs>=15.0.0
