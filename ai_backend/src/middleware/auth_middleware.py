@@ -7,7 +7,6 @@ import jwt
 from fastapi import HTTPException, Request, status
 from src.config import settings
 from src.core.global_exception_handlers import create_error_response
-from src.utils.jwt_key_manager import JWTKeyManager
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
@@ -20,11 +19,10 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
         super().__init__(app)
         self.exclude_paths = settings.get_jwt_exclude_paths()
-        # 퍼블릭 키 기반 알고리즘 사용 시 키 관리자 초기화
-        if not settings.jwt_jwks_uri:
-            raise ValueError("JWT_JWKS_URI가 설정되지 않았습니다. RS256/ES256 알고리즘 사용 시 필수입니다.")
-        self.key_manager = JWTKeyManager(jwks_uri=settings.jwt_jwks_uri)
-        logger.info(f"JWT Key Manager initialized with JWKS URI: {settings.jwt_jwks_uri}")
+        self.secret_key = settings.jwt_secret_key
+        self.algorithm = settings.jwt_algorithm
+        if not self.secret_key or self.secret_key == "change_me":
+            logger.warning("JWT secret key is using default value. Please configure JWT_SECRET_KEY.")
     
     def _is_excluded_path(self, path: str) -> bool:
         """경로가 제외 목록에 있는지 확인"""
@@ -52,47 +50,23 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         
         return parts[1]
     
-    def _extract_kid(self, token: str) -> Optional[str]:
-        """JWT 헤더에서 kid (Key ID) 추출"""
-        try:
-            # 검증 없이 헤더만 디코딩
-            unverified_header = jwt.get_unverified_header(token)
-            return unverified_header.get("kid")
-        except Exception as e:
-            logger.warning(f"Failed to extract kid from token: {e}")
-            return None
-    
     async def _verify_token(self, token: str) -> dict:
         """
-        JWT 토큰 검증 (퍼블릭 키 기반)
-        
-        1. 토큰 헤더에서 kid 추출
-        2. get_public_key(kid)로 퍼블릭 키 조회
-        3. 조회한 키로 토큰 검증
+        JWT 토큰 검증 (자체 서명 토큰)
         """
         try:
-            if not self.key_manager:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="JWT Key Manager가 초기화되지 않았습니다."
-                )
-            
-            # 토큰 헤더에서 kid 추출
-            kid = self._extract_kid(token)
-            if not kid:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="토큰에 kid (Key ID)가 없습니다."
-                )
-            
-            # kid로 퍼블릭 키 조회 (캐시 확인 → 갱신 → 재확인)
-            public_key = await self.key_manager.get_public_key(kid)
-            
-            # 퍼블릭 키로 토큰 검증
+            decode_kwargs = {
+                "algorithms": [self.algorithm],
+                "options": {
+                    "require": ["exp", "iat"],
+                },
+            }
+            if settings.jwt_issuer:
+                decode_kwargs["issuer"] = settings.jwt_issuer
             payload = jwt.decode(
                 token,
-                public_key,
-                algorithms=[settings.jwt_algorithm]
+                self.secret_key,
+                **decode_kwargs,
             )
             
             return payload
@@ -104,6 +78,12 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="토큰이 만료되었습니다."
+            )
+        except jwt.InvalidSignatureError as e:
+            logger.warning(f"Invalid token signature: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="유효하지 않은 토큰입니다."
             )
         except jwt.InvalidTokenError as e:
             logger.warning(f"Invalid token: {str(e)}")

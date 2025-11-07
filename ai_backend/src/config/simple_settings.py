@@ -177,33 +177,40 @@ class Settings(BaseSettings):
     # JWT 알고리즘
     # - RS256, ES256 등 (공개키 방식)
     # - RS256 권장: 퍼블릭 키 기반 검증
-    jwt_algorithm: str = Field(default="RS256", env="JWT_ALGORITHM")
+    jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
+    
+    # JWT 서명 키 (HS256 등 대칭키 알고리즘 사용 시 필수)
+    jwt_secret_key: str = Field(default="change_me", env="JWT_SECRET_KEY")
     
     # JWT 검증 활성화 여부
     # - True: 모든 API 요청에 JWT 검증 적용
     # - False: JWT 검증 비활성화 (개발용)
     jwt_enabled: bool = Field(default=True, env="JWT_ENABLED")
     
+    # JWT 만료 시간 (분)
+    jwt_access_token_expires_minutes: int = Field(default=60, env="JWT_ACCESS_TOKEN_EXPIRES_MINUTES")
+    
+    # JWT 발급자 (선택)
+    jwt_issuer: Optional[str] = Field(default=None, env="JWT_ISSUER")
+    
     # JWT 검증 제외 경로 (쉼표로 구분)
     # - 헬스체크, 공개 엔드포인트 등
     # - 예: /health,/docs,/openapi.json
-    jwt_exclude_paths: str = Field(default="/health,/docs,/openapi.json,/redoc", env="JWT_EXCLUDE_PATHS")
-    
-    # JWT JWKS URI (RS256 알고리즘 사용 시 필요)
-    # - JWKS (JSON Web Key Set) 엔드포인트 URL
-    # - 예: https://auth.example.com/.well-known/jwks.json
-    # - RS256 사용 시 필수, HS256 사용 시 불필요
-    jwt_jwks_uri: Optional[str] = Field(default=None, env="JWT_JWKS_URI")
+    jwt_exclude_paths: str = Field(default="/health,/docs,/openapi.json,/redoc,/v1/auth/login,/v1/auth/refresh", env="JWT_EXCLUDE_PATHS")
     
     def get_cors_origins(self) -> List[str]:
         """CORS origins를 리스트로 반환"""
         return [origin.strip() for origin in self.cors_origins.split(",")]
     
-    def get_jwt_exclude_paths(self) -> List[str]:
-        """JWT 제외 경로를 리스트로 반환"""
+    def pget_jwt_exclude_paths(self) -> List[str]:
+        """JWT 제외 경로를 리스트로 반환 (호환용)"""
         if not self.jwt_exclude_paths:
             return []
-        return [path.strip() for path in self.jwt_exclude_paths.split(",")]
+        return [path.strip() for path in self.jwt_exclude_paths.split(",") if path.strip()]
+
+    def get_jwt_exclude_paths(self) -> List[str]:
+        """JWT 제외 경로를 리스트로 반환"""
+        return self.pget_jwt_exclude_paths()
     
     class Config:
         env_file = ".env"  # 로컬 개발용 (파일이 없어도 에러 없음)

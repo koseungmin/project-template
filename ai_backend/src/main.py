@@ -290,6 +290,10 @@ def create_app():
     # APP_ROOT_PATH로 관리하므로 라우터에서는 /v1만 사용
     api_prefix = "/v1"
     
+    # Auth 라우터 추가 (로그인)
+    from src.api.routers.auth_router import router as auth_router
+    app.include_router(auth_router, prefix=api_prefix)
+
     # LLM Chat 라우터 추가 (채팅 전용)
     from src.api.routers.chat_router import router as chat_router
     app.include_router(chat_router, prefix=api_prefix)

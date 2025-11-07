@@ -5,6 +5,7 @@ from typing import Generator
 
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
+from src.api.services.auth_service import AuthService
 from src.api.services.document_service import DocumentService
 from src.api.services.group_service import GroupService
 from src.api.services.llm_chat_service import LLMChatService
@@ -101,6 +102,13 @@ def get_document_service(
 ) -> DocumentService:
     """문서 관리 서비스 의존성 주입"""
     return DocumentService(db=db)
+
+
+def get_auth_service(
+    db: Session = Depends(get_db)
+) -> AuthService:
+    """인증 서비스 의존성 주입"""
+    return AuthService(db=db)
 
 
 def get_user_service(

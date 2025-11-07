@@ -1,6 +1,5 @@
 from enum import Enum, unique
 
-
 __all__ = [
     "ResponseCode"
 ]
@@ -27,6 +26,8 @@ class ResponseCode(Enum):
     USER_NOT_FOUND = (-1201, "사용자를 찾을 수 없습니다.")
     USER_ALREADY_EXISTS = (-1202, "이미 존재하는 사용자입니다.")
     USER_INVALID_CREDENTIALS = (-1203, "잘못된 인증 정보입니다.")
+    AUTH_TOKEN_INVALID = (-1204, "유효하지 않은 토큰입니다.")
+    AUTH_TOKEN_EXPIRED = (-1205, "토큰이 만료되었습니다.")
     
     # CHAT_SERVICE = (-1300 ~ -1399)
     CHAT_SESSION_NOT_FOUND = (-1301, "채팅 세션을 찾을 수 없습니다.")

@@ -45,14 +45,17 @@ def start_prefect_server():
     """Prefect 서버 시작"""
     print("🚀 Prefect Server 시작 중...")
     
-    # 가상환경의 prefect 경로
+    # 현재 Python 인터프리터 사용 (launch.json에서 설정된 가상환경 Python)
+    python_path = sys.executable
+    
+    # 가상환경의 prefect 경로 확인 (디버깅용)
     venv_path = Path(__file__).parent.parent / "venv_py312"
     prefect_path = venv_path / "bin" / "prefect"
     
-    if not prefect_path.exists():
-        print(f"❌ Prefect를 찾을 수 없습니다: {prefect_path}")
-        return False
+    print(f"📌 사용 중인 Python: {python_path}")
+    print(f"📌 Prefect 경로 확인: {prefect_path}")
     
+    # Python 모듈로 실행하는 방식 사용 (더 안정적)
     try:
         # 환경변수 설정
         env = os.environ.copy()
@@ -60,9 +63,9 @@ def start_prefect_server():
         env['PREFECT_API_URL'] = 'http://127.0.0.1:4200/api'
         env['PREFECT_UI_URL'] = 'http://127.0.0.1:4200'
         
-        # Prefect 서버 시작
+        # Prefect 서버 시작 (Python 모듈로 실행)
         print("🔧 Prefect Server 구동 중...")
-        cmd = [str(prefect_path), "server", "start", "--host", "0.0.0.0", "--port", "4200"]
+        cmd = [python_path, "-m", "prefect", "server", "start", "--host", "0.0.0.0", "--port", "4200"]
         
         print(f"실행 명령: {' '.join(cmd)}")
         print("=" * 60)
