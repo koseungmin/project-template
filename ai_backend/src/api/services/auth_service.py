@@ -42,37 +42,28 @@ class AuthService:
             if not user_id or not employee_id:
                 raise HandledException(ResponseCode.REQUIRED_FIELD_MISSING, msg="user_id 또는 employee_id가 누락되었습니다.")
 
-            # 사용자 조회 (우선 user_id, 이후 employee_id로 fallback)
+            # 사용자 조회
             user = self.user_crud.get_user(user_id)
-            if not user and employee_id:
-                user = self.user_crud.get_user_by_employee_id(employee_id)
-                if user:
-                    user_id = user.user_id
-
-            # 사용자 없으면 생성
             if not user:
-                user = self.user_crud.create_user(
-                    user_id=user_id,
-                    employee_id=employee_id,
-                    name=name,
+                raise HandledException(ResponseCode.USER_NOT_FOUND)
+
+            # 입력된 정보와 저장된 정보 비교
+            if employee_id != user.employee_id:
+                raise HandledException(
+                    ResponseCode.USER_INVALID_CREDENTIALS,
+                    msg="사번이 일치하지 않습니다.",
                 )
-                logger.info(f"신규 사용자 생성: user_id={user_id}, employee_id={employee_id}")
-            else:
-                # 사용자 정보 업데이트 (이름 변경 등)
-                updated = False
-                if login_info.name and login_info.name != user.name:
-                    user = self.user_crud.update_user(user.user_id, name=login_info.name)
-                    updated = True
-                if employee_id and employee_id != user.employee_id:
-                    user = self.user_crud.update_user(user.user_id, employee_id=employee_id)
-                    updated = True
-                if updated:
-                    logger.info(f"사용자 정보 업데이트: user_id={user.user_id}")
+
+            if login_info.name and login_info.name != user.name:
+                raise HandledException(
+                    ResponseCode.USER_INVALID_CREDENTIALS,
+                    msg="이름이 일치하지 않습니다.",
+                )
 
             user_profile = self._build_user_profile(
                 user.user_id,
                 user.employee_id,
-                login_info.name or user.name,
+                user.name,
                 login_info.department,
                 login_info.email,
             )
