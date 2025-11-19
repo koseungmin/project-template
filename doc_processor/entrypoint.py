@@ -260,6 +260,17 @@ def main():
     prefect_ui_serve_base = get_env("PREFECT_UI_SERVE_BASE", "/scheduler")
     prefect_server_api_base_path = get_env("PREFECT_SERVER_API_BASE_PATH", "/scheduler/api")
     
+    # Database configuration for Prefect server
+    # PostgreSQL connection URL for Prefect server (optional - defaults to SQLite if not set)
+    prefect_db_url = get_env("PREFECT_API_DATABASE_CONNECTION_URL", None)
+    
+    # PostgreSQL connection parameters (alternative to full URL)
+    postgres_host = get_env("POSTGRES_HOST", get_env("PREFECT_DB_HOST", "localhost"))
+    postgres_port = get_env("POSTGRES_PORT", get_env("PREFECT_DB_PORT", "5432"))
+    postgres_db = get_env("POSTGRES_DB", get_env("PREFECT_DB_NAME", "prefect"))
+    postgres_user = get_env("POSTGRES_USER", get_env("PREFECT_DB_USER", "postgres"))
+    postgres_password = get_env("POSTGRES_PASSWORD", get_env("PREFECT_DB_PASSWORD", ""))
+    
     # Set environment variables for Prefect
     os.environ["PREFECT_API_URL"] = prefect_api_url
     os.environ["PREFECT_UI_URL"] = prefect_ui_url
@@ -267,6 +278,20 @@ def main():
     os.environ["PREFECT_SERVER_API_BASE_PATH"] = prefect_server_api_base_path
     os.environ["PREFECT_DISABLE_TELEMETRY"] = get_env("PREFECT_DISABLE_TELEMETRY", "1")
     os.environ["PREFECT_LOGGING_LEVEL"] = get_env("PREFECT_LOGGING_LEVEL", "INFO")
+    
+    # Set Prefect database connection URL if provided
+    # Priority: PREFECT_API_DATABASE_CONNECTION_URL > constructed from individual params
+    if prefect_db_url:
+        os.environ["PREFECT_API_DATABASE_CONNECTION_URL"] = prefect_db_url
+        log(f"Using Prefect database URL from PREFECT_API_DATABASE_CONNECTION_URL")
+    elif postgres_password:
+        # Construct PostgreSQL URL from individual parameters
+        constructed_db_url = f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
+        os.environ["PREFECT_API_DATABASE_CONNECTION_URL"] = constructed_db_url
+        log(f"Using PostgreSQL for Prefect database: postgresql://{postgres_user}:***@{postgres_host}:{postgres_port}/{postgres_db}")
+    else:
+        log("No Prefect database URL configured. Using default SQLite database.")
+        log("To use PostgreSQL, set PREFECT_API_DATABASE_CONNECTION_URL or POSTGRES_* environment variables.")
     
     # Create directories
     prefect_home = get_env("PREFECT_HOME", "/opt/prefect")
