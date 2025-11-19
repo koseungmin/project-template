@@ -261,15 +261,27 @@ def main():
     prefect_server_api_base_path = get_env("PREFECT_SERVER_API_BASE_PATH", "/scheduler/api")
     
     # Database configuration for Prefect server
-    # PostgreSQL connection URL for Prefect server (optional - defaults to SQLite if not set)
+    # Check if PostgreSQL should be used for Prefect server
+    use_postgresql = get_env("USE_POSTGRESQL_FOR_PREFECT", "0") == "1"
+    
+    # If explicitly set, use it directly
     prefect_db_url = get_env("PREFECT_API_DATABASE_CONNECTION_URL", None)
     
-    # PostgreSQL connection parameters (alternative to full URL)
-    postgres_host = get_env("POSTGRES_HOST", get_env("PREFECT_DB_HOST", "localhost"))
-    postgres_port = get_env("POSTGRES_PORT", get_env("PREFECT_DB_PORT", "5432"))
-    postgres_db = get_env("POSTGRES_DB", get_env("PREFECT_DB_NAME", "prefect"))
-    postgres_user = get_env("POSTGRES_USER", get_env("PREFECT_DB_USER", "postgres"))
-    postgres_password = get_env("POSTGRES_PASSWORD", get_env("PREFECT_DB_PASSWORD", ""))
+    if use_postgresql and not prefect_db_url:
+        # Read PostgreSQL connection parameters from environment variables
+        postgres_host = get_env("POSTGRES_HOST", get_env("PREFECT_DB_HOST", "localhost"))
+        postgres_port = get_env("POSTGRES_PORT", get_env("PREFECT_DB_PORT", "5432"))
+        postgres_db = get_env("POSTGRES_DB", get_env("PREFECT_DB_NAME", "prefect"))
+        postgres_user = get_env("POSTGRES_USER", get_env("PREFECT_DB_USER", "postgres"))
+        postgres_password = get_env("POSTGRES_PASSWORD", get_env("PREFECT_DB_PASSWORD", ""))
+        
+        # Construct PostgreSQL URL from individual parameters
+        if postgres_password:
+            prefect_db_url = f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
+            log(f"Constructed Prefect database URL from environment variables: postgresql://{postgres_user}:***@{postgres_host}:{postgres_port}/{postgres_db}")
+        else:
+            log("USE_POSTGRESQL_FOR_PREFECT=1 but POSTGRES_PASSWORD not set. Falling back to SQLite.")
+            use_postgresql = False
     
     # Set environment variables for Prefect
     os.environ["PREFECT_API_URL"] = prefect_api_url
@@ -279,19 +291,13 @@ def main():
     os.environ["PREFECT_DISABLE_TELEMETRY"] = get_env("PREFECT_DISABLE_TELEMETRY", "1")
     os.environ["PREFECT_LOGGING_LEVEL"] = get_env("PREFECT_LOGGING_LEVEL", "INFO")
     
-    # Set Prefect database connection URL if provided
-    # Priority: PREFECT_API_DATABASE_CONNECTION_URL > constructed from individual params
-    if prefect_db_url:
+    # Set Prefect database connection URL if PostgreSQL is enabled
+    if use_postgresql and prefect_db_url:
         os.environ["PREFECT_API_DATABASE_CONNECTION_URL"] = prefect_db_url
-        log(f"Using Prefect database URL from PREFECT_API_DATABASE_CONNECTION_URL")
-    elif postgres_password:
-        # Construct PostgreSQL URL from individual parameters
-        constructed_db_url = f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
-        os.environ["PREFECT_API_DATABASE_CONNECTION_URL"] = constructed_db_url
-        log(f"Using PostgreSQL for Prefect database: postgresql://{postgres_user}:***@{postgres_host}:{postgres_port}/{postgres_db}")
+        log(f"✅ Using PostgreSQL for Prefect database")
     else:
-        log("No Prefect database URL configured. Using default SQLite database.")
-        log("To use PostgreSQL, set PREFECT_API_DATABASE_CONNECTION_URL or POSTGRES_* environment variables.")
+        log("Using default SQLite database for Prefect server.")
+        log("To use PostgreSQL, set USE_POSTGRESQL_FOR_PREFECT=1 and POSTGRES_* environment variables.")
     
     # Create directories
     prefect_home = get_env("PREFECT_HOME", "/opt/prefect")
