@@ -1,0 +1,81 @@
+# Prefect API용 Ingress (/scheduler/api -> /api)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prefect-api-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    # /scheduler/api/xxx -> /api/xxx로 rewrite
+    nginx.ingress.kubernetes.io/rewrite-target: /api/$2
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: aiagent.com
+    http:
+      paths:
+      - path: /scheduler/api(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: prefect-doc-processor
+            port:
+              number: 4200
+
+---
+# Prefect UI용 Ingress (/scheduler -> /)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prefect-ui-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    # /scheduler/xxx -> /xxx로 rewrite
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: aiagent.com
+    http:
+      paths:
+      - path: /scheduler(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: prefect-doc-processor
+            port:
+              number: 4200
+      # 정적 파일 요청 처리
+      - path: /(index.*\.js|assets/.*|.*\.css|.*\.woff|.*\.woff2|.*\.ttf|.*\.eot|.*\.svg|.*\.png|.*\.jpg|.*\.ico|favicon\.ico)
+        pathType: Prefix
+        backend:
+          service:
+            name: prefect-doc-processor
+            port:
+              number: 4200
+
+---
+# 메인 백엔드용 Ingress (/api -> 백엔드)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend-api-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: aiagent.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: ai-backend-service  # 실제 백엔드 서비스 이름으로 변경 필요
+            port:
+              number: 8000  # 실제 백엔드 포트로 변경 필요

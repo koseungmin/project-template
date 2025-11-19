@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-doc-processor
+  namespace: default  # 필요에 따라 네임스페이스 변경
+  labels:
+    app: prefect-doc-processor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prefect-doc-processor
+  template:
+    metadata:
+      labels:
+        app: prefect-doc-processor
+    spec:
+      containers:
+      - name: prefect-doc-processor
+        image: your-registry/prefect-doc-processor:latest  # 실제 이미지 경로로 변경
+        imagePullPolicy: Always
+        env:
+        # Prefect 설정
+        # 내부 서비스 URL (컨테이너 내부에서 Prefect 서버 접근용)
+        # 같은 컨테이너 내에서 실행되므로 127.0.0.1 사용
+        - name: PREFECT_API_URL
+          value: "http://127.0.0.1:4200/api"
+        # 외부 접근 URL (브라우저에서 접근하는 URL)
+        # 브라우저가 이 URL로 접근하므로 외부 도메인(aiagent.com) 사용
+        - name: PREFECT_UI_URL
+          value: "https://aiagent.com/scheduler"
+        # UI가 브라우저에서 API 호출할 때 사용하는 URL
+        # 브라우저가 이 URL로 API 호출하므로 외부 도메인(aiagent.com) 사용
+        - name: PREFECT_UI_API_URL
+          value: "https://aiagent.com/scheduler/api"
+        - name: PREFECT_DISABLE_TELEMETRY
+          value: "1"
+        # Prefect YAML 경로 설정
+        # 기본값: /app/base/prefect.yaml (base 폴더의 prefect.yaml 사용)
+        # ConfigMap 마운트 시: /config/prefect.yaml
+        - name: PREFECT_YAML_PATH
+          value: "/app/base/prefect.yaml"  # base 폴더의 prefect.yaml 사용
+        # 서버/워커 설정
+        - name: START_PREFECT_SERVER
+          value: "0"  # 별도 서버 사용 시 0
+        - name: START_PREFECT_WORKER
+          value: "1"
+        - name: RUN_PREFECT_DEPLOY
+          value: "1"
+        - name: PREFECT_WORK_POOL
+          value: "default"
+        - name: PREFECT_WORK_QUEUE
+          value: "default"
+        # 환경변수 (Secret 또는 ConfigMap에서 가져오기)
+        - name: AZURE_OPENAI_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: endpoint
+        - name: AZURE_OPENAI_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: key
+        volumeMounts:
+        # ConfigMap에서 prefect.yaml 마운트
+        - name: prefect-config
+          mountPath: /config
+          readOnly: true
+      volumes:
+      # ConfigMap 볼륨
+      - name: prefect-config
+        configMap:
+          name: prefect-config
+          items:
+          - key: prefect.yaml
+            path: prefect.yaml
+      # 리소스 제한 (선택사항)
+      resources:
+        requests:
+          memory: "512Mi"
+          cpu: "250m"
+        limits:
+          memory: "2Gi"
+          cpu: "1000m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prefect-doc-processor
+  namespace: default
+spec:
+  selector:
+    app: prefect-doc-processor
+  ports:
+  - port: 4200
+    targetPort: 4200
+    name: prefect-ui
+  type: ClusterIP
+

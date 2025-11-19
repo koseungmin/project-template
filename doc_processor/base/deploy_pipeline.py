@@ -7,12 +7,29 @@ Prefect에서 파이프라인을 배포하는 스크립트
 """
 
 import os
+import platform
 import subprocess
 import sys
 from pathlib import Path
 
+# 윈도우 인코딩 문제 해결: Python 기본 인코딩을 UTF-8로 설정
+if platform.system() == "Windows":
+    # Python 3.7+ UTF-8 모드 활성화
+    os.environ['PYTHONUTF8'] = '1'
+    # 표준 입출력 인코딩 설정
+    if sys.stdout.encoding != 'utf-8':
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+        except:
+            pass
+    if sys.stderr.encoding != 'utf-8':
+        try:
+            sys.stderr.reconfigure(encoding='utf-8')
+        except:
+            pass
 
-def run_command(cmd, description):
+
+def run_command(cmd, description, cwd=None):
     """명령어 실행"""
     print(f"🔄 {description}...")
     print(f"실행 명령: {' '.join(cmd)}")
@@ -21,18 +38,79 @@ def run_command(cmd, description):
         # 환경변수 설정
         env = os.environ.copy()
         env['PREFECT_TELEMETRY_ENABLED'] = 'false'
-        env['PREFECT_API_URL'] = 'http://127.0.0.1:4200/api'
+        # PREFECT_API_URL이 환경변수에 있으면 사용, 없으면 기본값
+        if 'PREFECT_API_URL' not in env:
+            env['PREFECT_API_URL'] = 'http://127.0.0.1:4200/api'
         
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, env=env)
+        # 윈도우 인코딩 문제 해결을 위한 환경변수 설정 (더 강력한 설정)
+        if platform.system() == "Windows":
+            # Python 3.7+ UTF-8 모드 활성화
+            env['PYTHONUTF8'] = '1'
+            # 입출력 인코딩 설정
+            env['PYTHONIOENCODING'] = 'utf-8'
+            # locale 설정
+            env['LC_ALL'] = 'C.UTF-8'
+            env['LANG'] = 'C.UTF-8'
+            # Windows 코드페이지를 UTF-8로 설정
+            try:
+                import subprocess as sp
+
+                # 코드페이지를 UTF-8로 변경 (chcp 65001)
+                sp.run(['chcp', '65001'], shell=True, capture_output=True, check=False)
+            except:
+                pass
+        
+        # subprocess 실행 시 UTF-8 인코딩 명시 (윈도우 cp949 문제 해결)
+        # cwd가 지정되지 않으면 prefect.yaml이 있는 디렉토리로 이동
+        if cwd is None:
+            if 'PREFECT_YAML_PATH' in os.environ:
+                yaml_path = Path(os.environ['PREFECT_YAML_PATH'])
+                if yaml_path.exists():
+                    cwd = str(yaml_path.parent)
+        
+        result = subprocess.run(
+            cmd, 
+            cwd=cwd,  # 지정된 작업 디렉토리 또는 prefect.yaml이 있는 디렉토리
+            capture_output=True, 
+            text=True, 
+            encoding='utf-8',
+            errors='replace',  # 디코딩 에러 시 대체 문자 사용
+            check=True, 
+            env=env,
+            shell=False  # shell=False로 명시 (윈도우에서 더 안전)
+        )
         print(f"✅ {description} 완료")
         if result.stdout:
             print(f"출력: {result.stdout}")
         return True
     except subprocess.CalledProcessError as e:
         print(f"❌ {description} 실패")
-        print(f"에러: {e.stderr}")
+        print(f"반환 코드: {e.returncode}")
+        # stderr도 UTF-8로 디코딩 시도
+        try:
+            if isinstance(e.stderr, bytes):
+                error_msg = e.stderr.decode('utf-8', errors='replace')
+            else:
+                error_msg = e.stderr
+            print(f"에러 출력: {error_msg}")
+        except Exception as decode_err:
+            print(f"에러 디코딩 실패: {decode_err}")
+            print(f"원본 에러 (bytes): {e.stderr}")
         if e.stdout:
-            print(f"출력: {e.stdout}")
+            try:
+                if isinstance(e.stdout, bytes):
+                    output_msg = e.stdout.decode('utf-8', errors='replace')
+                else:
+                    output_msg = e.stdout
+                print(f"표준 출력: {output_msg}")
+            except Exception as decode_err:
+                print(f"출력 디코딩 실패: {decode_err}")
+                print(f"원본 출력 (bytes): {e.stdout}")
+        return False
+    except UnicodeDecodeError as ue:
+        print(f"❌ 인코딩 에러 발생: {ue}")
+        print(f"에러 위치: {ue.start}-{ue.end}")
+        print(f"에러 객체: {ue.object}")
         return False
 
 
@@ -41,28 +119,38 @@ def deploy_pipeline():
     print("🚀 문서 처리 파이프라인을 Prefect에 배포합니다...")
     print("=" * 60)
     
-    # 가상환경의 prefect 경로
-    venv_path = Path(__file__).parent.parent / "venv_py312"
-    prefect_path = venv_path / "bin" / "prefect"
+    # 현재 Python 인터프리터 사용 (launch.json에서 설정된 가상환경 Python)
+    python_path = sys.executable
     
-    if not prefect_path.exists():
-        print(f"❌ Prefect를 찾을 수 없습니다: {prefect_path}")
-        return False
+    # prefect.yaml 파일 경로 확인 (환경변수 또는 기본값)
+    # 기본값: base 폴더의 prefect.yaml (__file__과 같은 디렉토리)
+    prefect_yaml_path = os.environ.get(
+        'PREFECT_YAML_PATH',
+        str(Path(__file__).parent / "prefect.yaml")
+    )
+    prefect_yaml = Path(prefect_yaml_path)
     
-    # prefect.yaml 파일 확인
-    prefect_yaml = Path(__file__).parent.parent / "prefect.yaml"
     if not prefect_yaml.exists():
         print(f"❌ prefect.yaml 파일을 찾을 수 없습니다: {prefect_yaml}")
-        print("💡 먼저 prefect.yaml 파일을 생성해주세요.")
+        print("💡 환경변수 PREFECT_YAML_PATH로 파일 경로를 지정하거나,")
+        print(f"   기본 경로에 prefect.yaml 파일을 생성해주세요.")
         return False
     
-    # 배포 실행
+    print(f"📄 사용할 prefect.yaml: {prefect_yaml}")
+    
+    # 배포 실행 (Python 모듈로 실행하는 방식 사용 - 플랫폼 독립적)
+    # /app 디렉토리에서 실행하여 flow 경로가 올바르게 해석되도록 함
     print("📋 파이프라인 배포")
+    yaml_dir = prefect_yaml.parent
+    
     deploy_cmd = [
-        str(prefect_path), "deploy", "--all"
+        python_path, "-m", "prefect", "deploy",
+        "--prefect-file", str(prefect_yaml),
+        "--all"
     ]
     
-    if not run_command(deploy_cmd, "파이프라인 배포"):
+    # /app 디렉토리에서 실행 (flow 경로가 /app/flow/...로 해석되도록)
+    if not run_command(deploy_cmd, "파이프라인 배포", cwd="/app"):
         return False
     
     print("=" * 60)

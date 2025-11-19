@@ -11,6 +11,7 @@ PREFECT_WORKER_NAME="${PREFECT_WORKER_NAME:-doc-processor-worker}"
 PREFECT_WORKER_LIMIT="${PREFECT_WORKER_LIMIT:-1}"
 PREFECT_PREFETCH_SECONDS="${PREFECT_PREFETCH_SECONDS:-1}"
 PREFECT_DEPLOY_ARGS="${PREFECT_DEPLOY_ARGS:---all}"
+PREFECT_YAML_PATH="${PREFECT_YAML_PATH:-/app/base/prefect.yaml}"
 START_PREFECT_SERVER="${START_PREFECT_SERVER:-1}"
 START_PREFECT_WORKER="${START_PREFECT_WORKER:-1}"
 RUN_PREFECT_DEPLOY="${RUN_PREFECT_DEPLOY:-1}"
@@ -95,16 +96,17 @@ if [[ "${RUN_PREFECT_DEPLOY}" == "1" || "${START_PREFECT_WORKER}" == "1" ]]; the
 fi
 
 if [[ "${RUN_PREFECT_DEPLOY}" == "1" ]]; then
-  if [[ -f "/app/prefect.yaml" ]]; then
-    log "Running 'prefect deploy ${PREFECT_DEPLOY_ARGS}'..."
-    IFS=' ' read -ra PREFECT_DEPLOY_ARGS_ARRAY <<< "${PREFECT_DEPLOY_ARGS}"
-    if prefect deploy "${PREFECT_DEPLOY_ARGS_ARRAY[@]}"; then
+  if [[ -f "${PREFECT_YAML_PATH}" ]]; then
+    log "Running 'prefect deploy --prefect-file ${PREFECT_YAML_PATH} --all'..."
+    # Prefect 3.x에서는 --prefect-file과 --all 옵션 사용, /app 디렉토리에서 실행
+    if cd /app && prefect deploy --prefect-file "${PREFECT_YAML_PATH}" --all; then
       log "Prefect deployments registered successfully."
     else
       log "Prefect deployment command failed."
     fi
   else
-    log "prefect.yaml not found at /app/prefect.yaml. Skipping deployment."
+    log "prefect.yaml not found at ${PREFECT_YAML_PATH}. Skipping deployment."
+    log "Set PREFECT_YAML_PATH environment variable to specify custom path."
   fi
 else
   log "Skipping Prefect deployment because RUN_PREFECT_DEPLOY=${RUN_PREFECT_DEPLOY}."
