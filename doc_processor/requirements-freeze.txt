@@ -39,6 +39,7 @@ packaging==25.0
 pandas==2.3.3
 propcache==0.4.1
 psycopg2-binary==2.9.11
+asyncpg==0.30.0
 pydantic==2.12.1
 pydantic-settings==2.11.0
 pydantic_core==2.41.3

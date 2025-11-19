@@ -276,9 +276,12 @@ def main():
         postgres_password = get_env("POSTGRES_PASSWORD", get_env("PREFECT_DB_PASSWORD", ""))
         
         # Construct PostgreSQL URL from individual parameters
+        # Prefect requires async driver: use postgresql+asyncpg:// or postgresql+psycopg://
         if postgres_password:
-            prefect_db_url = f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
-            log(f"Constructed Prefect database URL from environment variables: postgresql://{postgres_user}:***@{postgres_host}:{postgres_port}/{postgres_db}")
+            # Check which async driver to use (default: asyncpg)
+            async_driver = get_env("PREFECT_DB_ASYNC_DRIVER", "asyncpg")  # asyncpg or psycopg
+            prefect_db_url = f"postgresql+{async_driver}://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
+            log(f"Constructed Prefect database URL from environment variables: postgresql+{async_driver}://{postgres_user}:***@{postgres_host}:{postgres_port}/{postgres_db}")
         else:
             log("USE_POSTGRESQL_FOR_PREFECT=1 but POSTGRES_PASSWORD not set. Falling back to SQLite.")
             use_postgresql = False
