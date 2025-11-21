@@ -171,4 +171,81 @@ class ScheduleService:
     def get_work_queue(self, work_queue_id: str) -> Dict[str, Any]:
         """특정 Work Queue 조회"""
         return self._make_request("GET", f"/work_queues/{work_queue_id}")
+    
+    def get_schedules(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        deployment_id: Optional[str] = None,
+        flow_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        스케줄 목록 조회
+        
+        Prefect API에는 스케줄을 직접 조회하는 엔드포인트가 없으므로,
+        Deployment 목록을 조회한 후 각 Deployment의 스케줄 정보를 추출하여 반환합니다.
+        """
+        try:
+            # 1. Deployment 목록 조회
+            deployments_result = self.get_deployments(
+                limit=limit,
+                offset=offset,
+                flow_name=flow_name
+            )
+            
+            deployments = deployments_result.get("items", [])
+            
+            # 2. 각 Deployment에서 스케줄 정보 추출
+            schedules = []
+            for deployment in deployments:
+                dep_id = deployment.get("id")
+                
+                # deployment_id 필터가 있는 경우 필터링
+                if deployment_id and dep_id != deployment_id:
+                    continue
+                
+                # Deployment에 스케줄 정보가 포함되어 있는지 확인
+                schedule = deployment.get("schedule")
+                
+                if schedule:
+                    # 스케줄 정보가 있으면 추가
+                    schedule_item = {
+                        "deployment_id": dep_id,
+                        "deployment_name": deployment.get("name"),
+                        "flow_id": deployment.get("flow_id"),
+                        "flow_name": deployment.get("flow_name"),
+                        "schedule": schedule,
+                        "is_schedule_active": deployment.get("is_schedule_active", True),
+                        "created": deployment.get("created"),
+                        "updated": deployment.get("updated")
+                    }
+                    schedules.append(schedule_item)
+                elif not deployment_id:
+                    # 스케줄이 없어도 deployment_id 필터가 없으면 포함 (스케줄 없는 것도 정보)
+                    schedule_item = {
+                        "deployment_id": dep_id,
+                        "deployment_name": deployment.get("name"),
+                        "flow_id": deployment.get("flow_id"),
+                        "flow_name": deployment.get("flow_name"),
+                        "schedule": None,
+                        "is_schedule_active": False,
+                        "created": deployment.get("created"),
+                        "updated": deployment.get("updated")
+                    }
+                    schedules.append(schedule_item)
+            
+            # 3. 결과 반환
+            return {
+                "items": schedules,
+                "total": len(schedules),
+                "limit": limit,
+                "offset": offset
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get schedules: {e}")
+            raise HandledException(
+                ResponseCode.INTERNAL_SERVER_ERROR,
+                msg=f"스케줄 목록 조회 실패: {str(e)}"
+            )
 

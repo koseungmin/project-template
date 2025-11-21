@@ -214,3 +214,33 @@ def get_work_queue(
             detail=f"Work Queue 조회 실패: {str(e)}"
         )
 
+
+@router.get("/schedules")
+def get_schedules(
+    limit: int = Query(100, ge=1, le=1000, description="조회할 개수"),
+    offset: int = Query(0, ge=0, description="건너뛸 개수"),
+    deployment_id: Optional[str] = Query(None, description="Deployment ID 필터"),
+    flow_name: Optional[str] = Query(None, description="Flow 이름 필터"),
+    schedule_service: ScheduleService = Depends(get_schedule_service)
+):
+    """
+    스케줄 목록을 조회합니다.
+    
+    Prefect API에는 스케줄을 직접 조회하는 엔드포인트가 없으므로,
+    Deployment 목록을 조회한 후 각 Deployment의 스케줄 정보를 추출하여 반환합니다.
+    """
+    try:
+        result = schedule_service.get_schedules(
+            limit=limit,
+            offset=offset,
+            deployment_id=deployment_id,
+            flow_name=flow_name
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to get schedules: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"스케줄 목록 조회 실패: {str(e)}"
+        )
+
