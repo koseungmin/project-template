@@ -318,6 +318,10 @@ def create_app():
     from src.api.routers.rating_router import router as rating_router
     app.include_router(rating_router, prefix=api_prefix)
     
+    # Schedule 라우터 추가 (Prefect 스케줄 조회)
+    from src.api.routers.schedule_router import router as schedule_router
+    app.include_router(schedule_router, prefix=api_prefix)
+    
     # CORS 설정 - 설정 파일에서 가져오기
     origins = settings.get_cors_origins()
     

@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
 # Building for Linux platform from macOS
+# Base 이미지 사용: python-pymupdf:3.12-slim (모든 Python 패키지와 시스템 의존성 포함)
 
-FROM --platform=linux/amd64 python:3.12-alpine AS runtime
+FROM --platform=linux/amd64 python-pymupdf:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -9,32 +10,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PREFECT_HOME=/opt/prefect
 
-# Install system dependencies - MINIMAL TEST (all removed for testing)
-# RUN apk add --no-cache \
-#     bash \
-#     curl \
-#     tini \
-#     build-base \
-#     postgresql-dev \
-#     poppler-utils \
-#     poppler-dev \
-#     jpeg-dev \
-#     zlib-dev \
-#     freetype-dev \
-#     lcms2-dev \
-#     openjpeg-dev \
-#     tiff-dev \
-#     tk-dev \
-#     tcl-devk
-
 WORKDIR /app
 
 # Copy dependency descriptors separately for better layer caching
 COPY doc_processor/requirements-freeze.txt /tmp/doc_processor_requirements.txt
 
-# Install dependencies (excluding pymilvus/milvus-lite which may not be needed)
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r /tmp/doc_processor_requirements.txt
+# Install Python dependencies
+# base 이미지에 시스템 의존성은 이미 설치되어 있음
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /tmp/doc_processor_requirements.txt && \
+    rm /tmp/doc_processor_requirements.txt
 
 # Copy shared core libraries and application source
 COPY shared_core /app/shared_core
@@ -53,10 +38,12 @@ ENV PYTHONPATH=/app:/app/shared_core \
 
 EXPOSE 4200
 
-# HEALTHCHECK disabled - curl not available without system packages
-# HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
-#     CMD curl -fsS http://127.0.0.1:4200/scheduler/api/health || exit 1
+# Health check (base 이미지에 curl이 설치되어 있음)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
+    CMD curl -fsS http://127.0.0.1:4200/scheduler/api/health || exit 1
 
-# ENTRYPOINT without tini - testing minimal setup
+# tini를 ENTRYPOINT로 설정 (base 이미지에 설치되어 있음)
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
 CMD ["python3", "/app/entrypoint.py"]
 

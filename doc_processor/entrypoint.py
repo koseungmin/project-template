@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -274,15 +275,40 @@ def main():
         postgres_db = get_env("POSTGRES_DB", get_env("PREFECT_DB_NAME", "prefect"))
         postgres_user = get_env("POSTGRES_USER", get_env("PREFECT_DB_USER", "postgres"))
         postgres_password = get_env("POSTGRES_PASSWORD", get_env("PREFECT_DB_PASSWORD", ""))
+        postgres_schema = get_env("POSTGRES_SCHEMA", get_env("PREFECT_DB_SCHEMA", None))
         
         # Construct PostgreSQL URL from individual parameters
         # Prefect requires async driver: use postgresql+asyncpg:// or postgresql+psycopg://
         if postgres_password:
             # Check which async driver to use (default: asyncpg)
             async_driver = get_env("PREFECT_DB_ASYNC_DRIVER", "asyncpg")  # asyncpg or psycopg
+            
+            # Build base URL
             prefect_db_url = f"postgresql+{async_driver}://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
-            log(f"Constructed Prefect database URL from environment variables: postgresql+{async_driver}://{postgres_user}:***@{postgres_host}:{postgres_port}/{postgres_db}")
+            
+            # Add schema option if specified
+            # Note: Prefect/SQLAlchemy에서 schema를 설정하는 방법
+            # 1. asyncpg/psycopg는 URL query parameter로 schema를 직접 설정할 수 없음
+            # 2. connect_args를 사용해야 하지만 Prefect는 URL만 받음
+            # 3. 대안: 연결 후 SET search_path 명령 실행 또는
+            #    Prefect 설정 파일에서 connect_args 지정 (Prefect 3.x+)
+            # 
+            # 현재는 URL에 schema를 포함하지 않고, 
+            # 사용자가 Prefect 서버 시작 전에 별도로 schema를 설정하도록 안내
+            if postgres_schema:
+                log(f"⚠️  Schema '{postgres_schema}' specified, but Prefect does not support schema setting via URL.")
+                log(f"   PostgreSQL URL query parameters ('options', 'server_settings') are not supported by asyncpg/psycopg drivers.")
+                log(f"   Options to set schema:")
+                log(f"   1. Create and use a separate database for Prefect (recommended)")
+                log(f"   2. Set search_path manually after Prefect server starts")
+                log(f"   3. Use PostgreSQL connection pooler with schema routing")
+                log(f"   Using base URL without schema setting: postgresql+{async_driver}://{postgres_user}:***@{postgres_host}:{postgres_port}/{postgres_db}")
+                log(f"   To use a specific schema, run: ALTER DATABASE {postgres_db} SET search_path TO {postgres_schema};")
+            else:
+                log(f"Constructed Prefect database URL from environment variables: postgresql+{async_driver}://{postgres_user}:***@{postgres_host}:{postgres_port}/{postgres_db}")
         else:
+            # PostgreSQL을 사용하려고 했지만 password가 없어서 SQLite로 fallback
+            # 이 경우만 에러 로그 출력 (의도적인 SQLite 사용이 아님)
             log("USE_POSTGRESQL_FOR_PREFECT=1 but POSTGRES_PASSWORD not set. Falling back to SQLite.")
             use_postgresql = False
     
@@ -298,9 +324,7 @@ def main():
     if use_postgresql and prefect_db_url:
         os.environ["PREFECT_API_DATABASE_CONNECTION_URL"] = prefect_db_url
         log(f"✅ Using PostgreSQL for Prefect database")
-    else:
-        log("Using default SQLite database for Prefect server.")
-        log("To use PostgreSQL, set USE_POSTGRESQL_FOR_PREFECT=1 and POSTGRES_* environment variables.")
+    # else: SQLite 사용 시 로그 출력하지 않음 (의도적인 사용일 수 있음)
     
     # Create directories
     prefect_home = get_env("PREFECT_HOME", "/opt/prefect")

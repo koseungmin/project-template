@@ -9,6 +9,7 @@ from src.api.services.auth_service import AuthService
 from src.api.services.document_service import DocumentService
 from src.api.services.group_service import GroupService
 from src.api.services.llm_chat_service import LLMChatService
+from src.api.services.schedule_service import ScheduleService
 from src.api.services.user_service import UserService
 from src.cache.redis_client import get_redis_client
 from src.config import settings
@@ -123,6 +124,11 @@ def get_group_service(
 ) -> GroupService:
     """그룹 관리 서비스 의존성 주입"""
     return GroupService(db=db)
+
+
+def get_schedule_service() -> ScheduleService:
+    """Prefect Schedule 서비스 의존성 주입"""
+    return ScheduleService()
 
 
 def get_current_user(request: Request) -> dict:

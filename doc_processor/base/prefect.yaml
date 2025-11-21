@@ -3,7 +3,7 @@ prefect-version: 3.0.0
 
 deployments:
   - name: document-processing-pipeline
-    entrypoint: flow/document_processing_pipeline.py:document_processing_pipeline
+    entrypoint: /app/flow/document_processing_pipeline.py:document_processing_pipeline
     description: 4단계 문서 처리 파이프라인 - 텍스트 추출, 이미지 캡처, GPT 설명, Vector DB 구성 (분리된 API 버전)
     work_pool:
       name: default
@@ -28,7 +28,7 @@ deployments:
       MAX_PAGES_TO_PROCESS: "5"
   
   - name: batch-document-processing-pipeline
-    entrypoint: flow/batch_document_processing_pipeline.py:batch_document_processing_pipeline
+    entrypoint: /app/flow/batch_document_processing_pipeline.py:batch_document_processing_pipeline
     description: 폴더의 모든 PDF 파일을 일괄 처리하는 배치 파이프라인 (실제 태스크 직접 실행)
     work_pool:
       name: default

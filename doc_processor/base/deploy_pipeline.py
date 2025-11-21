@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 # 윈도우 인코딩 문제 해결: Python 기본 인코딩을 UTF-8로 설정
 if platform.system() == "Windows":
     # Python 3.7+ UTF-8 모드 활성화
@@ -123,11 +125,24 @@ def deploy_pipeline():
     python_path = sys.executable
     
     # prefect.yaml 파일 경로 확인 (환경변수 또는 기본값)
-    # 기본값: base 폴더의 prefect.yaml (__file__과 같은 디렉토리)
-    prefect_yaml_path = os.environ.get(
-        'PREFECT_YAML_PATH',
-        str(Path(__file__).parent / "prefect.yaml")
-    )
+    # Docker: base/prefect.yaml 사용 (절대 경로 /app/flow/...)
+    # 로컬: doc_processor/prefect.yaml 사용 (상대 경로 flow/...)
+    if 'PREFECT_YAML_PATH' in os.environ:
+        prefect_yaml_path = os.environ['PREFECT_YAML_PATH']
+    else:
+        # 환경 자동 감지
+        if os.path.exists("/app"):
+            # Docker 환경: base/prefect.yaml 사용
+            prefect_yaml_path = str(Path(__file__).parent / "prefect.yaml")
+        else:
+            # 로컬 환경: doc_processor/prefect.yaml 사용
+            local_yaml = Path(__file__).parent.parent / "prefect.yaml"
+            if local_yaml.exists():
+                prefect_yaml_path = str(local_yaml)
+            else:
+                # fallback: base/prefect.yaml 사용
+                prefect_yaml_path = str(Path(__file__).parent / "prefect.yaml")
+    
     prefect_yaml = Path(prefect_yaml_path)
     
     if not prefect_yaml.exists():
@@ -139,19 +154,130 @@ def deploy_pipeline():
     print(f"📄 사용할 prefect.yaml: {prefect_yaml}")
     
     # 배포 실행 (Python 모듈로 실행하는 방식 사용 - 플랫폼 독립적)
-    # /app 디렉토리에서 실행하여 flow 경로가 올바르게 해석되도록 함
+    # Docker 환경인지 로컬 환경인지 자동 감지하여 cwd 설정
+    # Docker: /app 디렉토리에서 실행
+    # 로컬: doc_processor 디렉토리에서 실행 (prefect.yaml의 부모의 부모)
+    if os.path.exists("/app"):
+        # Docker 환경
+        deploy_cwd = "/app"
+        print("🐳 Docker 환경 감지: /app 디렉토리에서 실행")
+    else:
+        # 로컬 환경: prefect.yaml의 부모의 부모 디렉토리 (doc_processor)
+        # base/prefect.yaml -> base -> doc_processor
+        deploy_cwd = str(prefect_yaml.parent.parent)
+        print(f"💻 로컬 환경 감지: {deploy_cwd} 디렉토리에서 실행")
+    
     print("📋 파이프라인 배포")
     yaml_dir = prefect_yaml.parent
     
-    deploy_cmd = [
-        python_path, "-m", "prefect", "deploy",
-        "--prefect-file", str(prefect_yaml),
-        "--all"
-    ]
+    # Prefect 3.0에서 --all 옵션 사용 (모든 deployment를 한 번에 배포)
+    # 환경변수로 개별 배포 모드 선택 가능
+    use_individual_deploy = os.environ.get('PREFECT_DEPLOY_INDIVIDUAL', '0') == '1'
     
-    # /app 디렉토리에서 실행 (flow 경로가 /app/flow/...로 해석되도록)
-    if not run_command(deploy_cmd, "파이프라인 배포", cwd="/app"):
-        return False
+    if use_individual_deploy:
+        # 개별 배포 모드 (에러 발생 시에도 계속 진행)
+        print("📦 개별 배포 모드로 실행합니다...")
+        try:
+            with open(prefect_yaml, 'r', encoding='utf-8') as f:
+                yaml_content = yaml.safe_load(f)
+            
+            deployments = yaml_content.get('deployments', [])
+            if not deployments:
+                print("⚠️  prefect.yaml에 deployment가 없습니다.")
+                return False
+            
+            print(f"📦 총 {len(deployments)}개의 deployment를 개별 배포합니다.")
+            
+            success_count = 0
+            for idx, deployment in enumerate(deployments, 1):
+                deployment_name = deployment.get('name', f'deployment-{idx}')
+                print(f"\n{'='*60}")
+                print(f"📦 [{idx}/{len(deployments)}] 배포 중: {deployment_name}")
+                print(f"{'='*60}")
+                
+                deploy_cmd = [
+                    python_path, "-m", "prefect", "deploy",
+                    "--prefect-file", str(prefect_yaml),
+                    "--name", deployment_name
+                ]
+                
+                if run_command(deploy_cmd, f"Deployment '{deployment_name}' 배포", cwd=deploy_cwd):
+                    success_count += 1
+                    print(f"✅ {deployment_name} 배포 성공")
+                else:
+                    print(f"⚠️  {deployment_name} 배포 실패 (계속 진행)")
+            
+            print(f"\n{'='*60}")
+            print(f"📊 배포 결과: {success_count}/{len(deployments)} 성공")
+            print(f"{'='*60}")
+            
+            if success_count == 0:
+                print("❌ 모든 deployment 배포 실패")
+                return False
+            
+        except Exception as e:
+            print(f"❌ prefect.yaml 파일 읽기 실패: {e}")
+            return False
+    else:
+        # --all 옵션 사용 (기본 모드)
+        # Prefect의 --all 옵션은 하나라도 실패하면 non-zero exit code를 반환하므로
+        # check=False로 설정하고 stdout/stderr를 확인하여 실제 성공 여부 판단
+        print("📦 --all 옵션으로 모든 deployment를 배포합니다...")
+        deploy_cmd = [
+            python_path, "-m", "prefect", "deploy",
+            "--prefect-file", str(prefect_yaml),
+            "--all"
+        ]
+        
+        # check=False로 설정하여 에러가 발생해도 계속 진행
+        try:
+            env = os.environ.copy()
+            env['PREFECT_TELEMETRY_ENABLED'] = 'false'
+            if 'PREFECT_API_URL' not in env:
+                env['PREFECT_API_URL'] = 'http://127.0.0.1:4200/api'
+            
+            result = subprocess.run(
+                deploy_cmd,
+                cwd=deploy_cwd,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                check=False,  # 에러가 발생해도 예외를 발생시키지 않음
+                env=env
+            )
+            
+            # stdout 출력 (성공한 deployment 정보 포함)
+            if result.stdout:
+                print("📋 배포 출력:")
+                print(result.stdout)
+            
+            # stderr 출력 (에러 정보 포함)
+            if result.stderr:
+                print("⚠️  배포 경고/에러:")
+                print(result.stderr)
+            
+            # exit code 확인
+            if result.returncode == 0:
+                print("✅ 모든 deployment 배포 성공")
+                return True
+            else:
+                print(f"⚠️  배포 종료 코드: {result.returncode}")
+                print("💡 일부 deployment가 실패했을 수 있습니다.")
+                print("   stdout/stderr 출력을 확인하여 어떤 deployment가 실패했는지 확인하세요.")
+                print("   개별 배포 모드로 상세 에러를 확인하려면:")
+                print("   export PREFECT_DEPLOY_INDIVIDUAL=1")
+                
+                # stdout에 "Successfully" 또는 "deployed"가 있으면 일부는 성공한 것
+                if result.stdout and ("Successfully" in result.stdout or "deployed" in result.stdout.lower()):
+                    print("✅ 일부 deployment는 성공했습니다.")
+                    return True
+                else:
+                    return False
+                    
+        except Exception as e:
+            print(f"❌ 배포 실행 중 예외 발생: {e}")
+            return False
     
     print("=" * 60)
     print("🎉 파이프라인 배포 완료!")

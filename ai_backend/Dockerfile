@@ -1,17 +1,12 @@
 # Multi-stage build for FastAPI application
-FROM python:3.12-slim as builder
+# Builder stage: Dockerfile.pymupdf를 base로 사용
+FROM python-pymupdf:3.12-slim as builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
 
 # Set work directory
 WORKDIR /app
@@ -23,19 +18,13 @@ COPY requirements.txt ./
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# Production stage
-FROM python:3.12-slim as production
+# Production stage: Dockerfile.pymupdf를 base로 사용
+FROM python-pymupdf:3.12-slim as production
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.local/bin:$PATH"
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
 
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
