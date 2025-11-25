@@ -1,0 +1,23 @@
+# Core FastAPI dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+gunicorn>=21.2.0
+
+# Data validation and settings
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# HTTP clients and utilities
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Utilities
+validators>=0.22.0
+python-multipart>=0.0.20
+PyYAML>=6.0.0
+PyJWT>=2.8.0
+cryptography>=41.0.0
+
+# Logging
+coloredlogs>=15.0.0
+

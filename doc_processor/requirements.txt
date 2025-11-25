@@ -22,6 +22,9 @@ azure-search-documents>=11.4.0
 azure-identity>=1.15.0
 azure-core>=1.29.0
 
+# OnlyOffice Document Server API 호출
+requests>=2.31.0
+
 # PDF 이미지 변환을 위한 시스템 의존성 (설치 방법 안내)
 # macOS: brew install poppler
 # Ubuntu: apt-get install poppler-utils
