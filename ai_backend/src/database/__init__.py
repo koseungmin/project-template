@@ -19,6 +19,5 @@ __all__ = [
     "ChatMessage", 
     "Document",
     "Group",
-    "GroupMember",
     "APIUsageLog",
 ]
