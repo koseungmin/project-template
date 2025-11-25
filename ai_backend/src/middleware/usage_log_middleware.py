@@ -111,20 +111,16 @@ class UsageLogMiddleware(BaseHTTPMiddleware):
         if self._is_excluded_path(request.url.path):
             return await call_next(request)
         
-        # 토큰 인증이 꺼져있으면 user 정보 없이 로그 저장하지 않음
         # user_id는 무조건 토큰에서만 가져옴 (auth_middleware에서 이미 검증된 payload 사용)
+        # 토큰이 없으면 user_id와 employee_id는 None으로 저장
         user_id = None
         employee_id = None
         
-        # JWT 인증이 활성화되어 있고, auth_middleware에서 검증된 payload가 있는 경우만
+        # JWT 인증이 활성화되어 있고, auth_middleware에서 검증된 payload가 있는 경우만 user 정보 추출
         if settings.jwt_enabled and hasattr(request.state, "jwt_payload"):
             jwt_payload = request.state.jwt_payload
             user_id = jwt_payload.get("user_id") or jwt_payload.get("sub") or jwt_payload.get("id")
             employee_id = jwt_payload.get("employee_id")
-        
-        # 토큰 인증이 꺼져있거나 user_id가 없으면 로그 저장하지 않음
-        if not settings.jwt_enabled or not user_id:
-            return await call_next(request)
         
         # 요청 정보 수집
         endpoint = request.url.path
