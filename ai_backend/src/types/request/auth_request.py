@@ -63,12 +63,20 @@ class LoginInfo(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    """로그인 요청 모델."""
+    """로그인 요청 모델 (SSO 토큰 기반)."""
 
     model_config = ConfigDict(populate_by_name=True)
 
-    login_info: LoginInfo = Field(
-        ..., validation_alias=AliasChoices("login_info", "loginInfo"), description="로그인 정보"
+    sso_token: str = Field(
+        ...,
+        validation_alias=AliasChoices("sso_token", "ssoToken", "token"),
+        description="SSO 인증 서비스에서 받은 토큰",
+        min_length=10,
+    )
+    
+    # 기존 login_info는 하위 호환성을 위해 선택사항으로 유지
+    login_info: Optional[LoginInfo] = Field(
+        None, validation_alias=AliasChoices("login_info", "loginInfo"), description="로그인 정보 (선택사항, SSO 토큰 사용 시 불필요)"
     )
 
 

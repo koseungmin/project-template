@@ -18,9 +18,17 @@ def login(
     request: LoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
 ) -> AuthTokenResponse:
-    """로그인 요청을 처리하고 자체 토큰을 발급합니다."""
-    logger.info("로그인 요청 수신")
-    result = auth_service.login(request.login_info)
+    """
+    SSO 토큰 기반 로그인 요청을 처리하고 자체 토큰을 발급합니다.
+    
+    프론트엔드에서 SSO 인증 서비스로부터 받은 토큰을 전달받아:
+    1. SSO 토큰에서 payload 추출 (서명 검증 없이)
+    2. payload에서 user 정보 파악
+    3. 우리 DB에 사용자가 있으면 자체 JWT 토큰 발급
+    4. 유저 정보와 함께 프론트로 전달
+    """
+    logger.info("SSO 토큰 기반 로그인 요청 수신")
+    result = auth_service.login(request.sso_token, request.login_info)
     return AuthTokenResponse(**result)
 
 

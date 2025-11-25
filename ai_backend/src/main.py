@@ -279,6 +279,13 @@ def create_app():
     app = set_global_exception_handlers(app)
     logger.info("Global exception handlers registered successfully")
     
+    # 사용 이력 추적 미들웨어 등록 (JWT 미들웨어보다 먼저 등록)
+    from src.core.dependencies import get_database
+    from src.middleware.usage_log_middleware import UsageLogMiddleware
+    database = get_database()
+    app.add_middleware(UsageLogMiddleware, database=database)
+    logger.info("Usage log middleware registered successfully")
+    
     # JWT 인증 미들웨어 등록
     if settings.jwt_enabled:
         app.add_middleware(JWTAuthMiddleware)
@@ -321,6 +328,10 @@ def create_app():
     # Schedule 라우터 추가 (Prefect 스케줄 조회)
     from src.api.routers.schedule_router import router as schedule_router
     app.include_router(schedule_router, prefix=api_prefix)
+    
+    # Usage Log 라우터 추가 (사용 이력 조회 - 운영자용)
+    from src.api.routers.usage_log_router import router as usage_log_router
+    app.include_router(usage_log_router, prefix=api_prefix)
     
     # CORS 설정 - 설정 파일에서 가져오기
     origins = settings.get_cors_origins()
