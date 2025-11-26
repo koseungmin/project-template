@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from src.api.services.llm_chat_service import LLMChatService
-from src.core.dependencies import get_llm_chat_service
+from src.core.dependencies import get_current_user_id, get_llm_chat_service
 from src.types.request.chat_request import (
     ClearConversationRequest,
     CreateChatRequest,
@@ -34,17 +34,18 @@ class GenerateTitleRequest(BaseModel):
 def send_message(
     chat_id: str,
     request: UserMessageRequest,
+    user_id: str = Depends(get_current_user_id),
     llm_chat_service: LLMChatService = Depends(get_llm_chat_service)
 ):
     """사용자 메시지를 전송하고 AI 응답을 받습니다."""
-    logger.info(f"Received message for chat {chat_id}: {request.message[:50]}...")
+    logger.info(f"Received message for chat {chat_id} from user {user_id}: {request.message[:50]}...")
     
     # Service Layer에서 전파된 HandledException을 그대로 전파
     # Global Exception Handler가 자동으로 처리
     ai_response = llm_chat_service.send_message_simple(
         chat_id, 
         request.message, 
-        request.user_id
+        user_id
     )
     
     return AIResponse(
@@ -58,6 +59,7 @@ def send_message(
 async def send_message_stream(
     chat_id: str,
     request: UserMessageRequest,
+    user_id: str = Depends(get_current_user_id),
     llm_chat_service: LLMChatService = Depends(get_llm_chat_service)
 ):
     """스트리밍 방식으로 메시지를 전송하고 AI 응답을 받습니다 (SSE)."""
@@ -107,7 +109,7 @@ async def send_message_stream(
             try:
                 # 사용자 메시지 저장
                 user_message_id = llm_chat_service.save_user_message(
-                    chat_id, request.message, request.user_id
+                    chat_id, request.message, user_id
                 )
 
                 # 사용자 메시지 전송
@@ -115,13 +117,13 @@ async def send_message_stream(
                     'type': 'user_message',
                     'message_id': user_message_id,
                     'content': request.message,
-                    'user_id': request.user_id,
+                    'user_id': user_id,
                     'timestamp': llm_chat_service.get_current_timestamp()
                 }
                 await chunk_queue.put(user_message_data)
 
                 # AI 응답 생성 (스트리밍)
-                async for chunk in llm_chat_service.generate_ai_response_stream(chat_id, request.user_id):
+                async for chunk in llm_chat_service.generate_ai_response_stream(chat_id, user_id):
                     await chunk_queue.put(chunk)
                 
                 # 완료 신호
@@ -211,7 +213,7 @@ def clear_conversation(
 @router.post("/chat/{chat_id}/cancel")
 async def cancel_generation(
     chat_id: str,
-    user_id: str = "user",
+    user_id: str = Depends(get_current_user_id),
     llm_chat_service: LLMChatService = Depends(get_llm_chat_service)
 ):
     """현재 생성 중인 AI 응답을 취소합니다."""
@@ -226,25 +228,26 @@ async def cancel_generation(
 @router.post("/chat/chats", response_model=CreateChatResponse)
 def create_chat(
     request: CreateChatRequest,
+    user_id: str = Depends(get_current_user_id),
     llm_chat_service: LLMChatService = Depends(get_llm_chat_service)
 ):
     """새로운 채팅을 생성합니다."""
     # Service Layer에서 전파된 HandledException을 그대로 전파
     # Global Exception Handler가 자동으로 처리
-    chat_id = llm_chat_service.create_chat(request.chat_title, request.user_id)
+    chat_id = llm_chat_service.create_chat(request.chat_title, user_id)
     chat_info = llm_chat_service.get_chat_info(chat_id)
     
     return CreateChatResponse(
         chat_id=chat_id,
         chat_title=request.chat_title,
-        user_id=request.user_id,
+        user_id=user_id,
         created_at=chat_info["created_at"]
     )
 
 
 @router.get("/chat/chats", response_model=ChatListResponse)
 def get_chats(
-    user_id: str,
+    user_id: str = Depends(get_current_user_id),
     llm_chat_service: LLMChatService = Depends(get_llm_chat_service)
 ):
     """사용자의 채팅 목록을 조회합니다."""
@@ -273,7 +276,7 @@ def delete_chat(
 def update_chat_title(
     chat_id: str,
     new_title: str,
-    user_id: str,
+    user_id: str = Depends(get_current_user_id),
     llm_chat_service: LLMChatService = Depends(get_llm_chat_service)
 ):
     """채팅방 이름을 변경합니다."""

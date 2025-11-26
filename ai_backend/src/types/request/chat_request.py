@@ -8,7 +8,7 @@ class UserMessageRequest(BaseModel):
     """사용자 메시지 요청 모델"""
     type: str = Field(default="user_message", description="메시지 타입")
     message: str = Field(..., min_length=1, max_length=4000, description="사용자 메시지")
-    user_id: str = Field(default="user", description="사용자 ID")
+    # user_id는 토큰에서 자동으로 추출됨
 
 
 class ClearConversationRequest(BaseModel):
@@ -24,4 +24,4 @@ class GetHistoryRequest(BaseModel):
 class CreateChatRequest(BaseModel):
     """채팅 생성 요청 모델"""
     chat_title: str = Field(..., min_length=1, max_length=100, description="채팅 제목")
-    user_id: str = Field(..., min_length=1, max_length=50, description="사용자 ID")
+    # user_id는 토큰에서 자동으로 추출됨

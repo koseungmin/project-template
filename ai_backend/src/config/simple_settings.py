@@ -175,11 +175,15 @@ class Settings(BaseSettings):
     # JWT Configuration
     # ==========================================
     # JWT 알고리즘
-    # - RS256, ES256 등 (공개키 방식)
-    # - RS256 권장: 퍼블릭 키 기반 검증
+    # - HS256: 대칭키 알고리즘 (기본값, secret_key를 문자열로 사용)
+    # - RS256, ES256: 공개키 알고리즘 (secret_key를 PEM 형식의 개인키로 사용)
+    # 기본값: HS256 (디폴트 설정 사용 시)
     jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
     
-    # JWT 서명 키 (HS256 등 대칭키 알고리즘 사용 시 필수)
+    # JWT 서명 키
+    # - HS256 사용 시: 임의의 문자열 (예: "your-secret-key")
+    # - RS256/ES256 사용 시: PEM 형식의 개인키 (-----BEGIN PRIVATE KEY----- ...)
+    # 기본값: "change_me" (디폴트 설정 사용 시)
     jwt_secret_key: str = Field(default="change_me", env="JWT_SECRET_KEY")
     
     # JWT 검증 활성화 여부
