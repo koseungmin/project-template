@@ -32,9 +32,21 @@ class ScheduleService:
         """Prefect API에 HTTP 요청을 보내는 내부 메서드"""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         
+        def convert_sets_to_lists(obj):
+            """set 타입을 list로 변환하는 재귀 함수"""
+            if isinstance(obj, set):
+                return list(obj)
+            elif isinstance(obj, dict):
+                return {key: convert_sets_to_lists(value) for key, value in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_sets_to_lists(item) for item in obj]
+            return obj
+        
         try:
             with httpx.Client(timeout=30.0) as client:
                 if json_data:
+                    # set 타입을 list로 변환하여 JSON 직렬화 가능하도록 함
+                    json_data = convert_sets_to_lists(json_data)
                     # POST 요청 시 JSON 데이터 전송
                     response = client.request(method, url, json=json_data)
                 else:
@@ -43,10 +55,19 @@ class ScheduleService:
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"Prefect API request failed: {e.response.status_code} - {e.response.text}")
+            error_text = e.response.text
+            logger.error(f"Prefect API request failed: {e.response.status_code} - {error_text}")
+            logger.error(f"Request URL: {url}")
+            logger.error(f"Request data: {json_data if json_data else params}")
+            # 422 에러인 경우 더 자세한 에러 메시지 반환
+            if e.response.status_code == 422:
+                raise HandledException(
+                    ResponseCode.INTERNAL_SERVER_ERROR,
+                    msg=f"Prefect API 요청 형식 오류 (422): {error_text}"
+                )
             raise HandledException(
                 ResponseCode.INTERNAL_SERVER_ERROR,
-                msg=f"Prefect API 요청 실패: {e.response.status_code}"
+                msg=f"Prefect API 요청 실패: {e.response.status_code} - {error_text}"
             )
         except httpx.RequestError as e:
             logger.error(f"Prefect API connection error: {e}")
@@ -179,40 +200,79 @@ class ScheduleService:
         self,
         limit: int = 100,
         offset: int = 0,
-        deployment_id: Optional[str] = None,
-        flow_id: Optional[str] = None,
+        deployment_id: Optional[List[str]] = None,
+        flow_id: Optional[List[str]] = None,
         state_type: Optional[str] = None,
         exclude_task_runs: bool = True
     ) -> Dict[str, Any]:
         """
-        Flow Run 목록 조회 (paginate 사용)
+        Flow Run 목록 조회 (filter 사용 - 필터링 지원)
         
         Args:
+            deployment_id: Deployment ID 리스트 (단일 값도 리스트로 변환)
+            flow_id: Flow ID 리스트 (단일 값도 리스트로 변환)
+            state_type: 상태 타입 필터
             exclude_task_runs: True인 경우 task run 정보를 제외하고 flow run 레벨만 반환
         """
+        # Prefect API의 filter 엔드포인트 형식에 맞게 구성
         json_data = {
             "limit": limit,
             "offset": offset
         }
         
-        if deployment_id:
-            json_data["deployment_id"] = deployment_id
-        if flow_id:
-            json_data["flow_id"] = flow_id
-        if state_type:
-            json_data["state_type"] = state_type
+        # flow_runs 필터 조건 구성
+        flow_runs_filter = {}
         
-        result = self._make_request("POST", "/flow_runs/paginate", json_data=json_data)
+        # deployment_id 처리 (리스트 또는 단일 값)
+        if deployment_id:
+            # 리스트가 아니면 리스트로 변환
+            if isinstance(deployment_id, str):
+                deployment_id_list = [deployment_id]
+            else:
+                deployment_id_list = deployment_id
+            if deployment_id_list:
+                flow_runs_filter["deployment_id"] = {"any_": deployment_id_list}
+        
+        # flow_id는 flows 필터에 포함 (리스트 또는 단일 값)
+        flows_filter = {}
+        if flow_id:
+            # 리스트가 아니면 리스트로 변환
+            if isinstance(flow_id, str):
+                flow_id_list = [flow_id]
+            else:
+                flow_id_list = flow_id
+            if flow_id_list:
+                flows_filter["id"] = {"any_": flow_id_list}
+        
+        # state_type은 state.type으로 필터링
+        if state_type:
+            flow_runs_filter["state"] = {
+                "type": {"any_": [state_type]}
+            }
+        
+        # 필터 조건 추가
+        if flow_runs_filter:
+            json_data["flow_runs"] = flow_runs_filter
+        if flows_filter:
+            json_data["flows"] = flows_filter
+        
+        result = self._make_request("POST", "/flow_runs/filter", json_data=json_data)
         # Prefect API의 paginate 응답을 표준 형식으로 변환
         # count 필드가 있으면 사용, 없으면 results 길이 사용
         total_count = result.get("count", len(result.get("results", [])))
         
         flow_runs = result.get("results", [])
         
+        # deployment_id가 있는 flow run만 필터링
+        flow_runs_with_deployment = [
+            flow_run for flow_run in flow_runs 
+            if flow_run.get("deployment_id") is not None
+        ]
+        
         # task run 정보 제외하고 flow run 레벨만 반환
         if exclude_task_runs:
             flow_run_summaries = []
-            for flow_run in flow_runs:
+            for flow_run in flow_runs_with_deployment:
                 # Flow Run 레벨 정보만 추출 (task run 정보 완전 제외)
                 flow_run_summary = {
                     "id": flow_run.get("id"),
@@ -249,19 +309,23 @@ class ScheduleService:
                 
                 flow_run_summaries.append(flow_run_summary)
             
+            # 필터링된 개수로 total 업데이트
+            filtered_count = len(flow_run_summaries)
+            
             return {
-                "items": flow_run_summaries,  # task run 정보가 제외된 flow run만 반환
-                "total": total_count,
-                "count": total_count,
+                "items": flow_run_summaries,  # deployment_id가 있고 task run 정보가 제외된 flow run만 반환
+                "total": filtered_count,
+                "count": filtered_count,
                 "limit": limit,
                 "offset": offset
             }
         else:
             # task run 정보 포함 (기존 동작)
+            filtered_count = len(flow_runs_with_deployment)
             return {
-                "items": flow_runs,
-                "total": total_count,
-                "count": total_count,
+                "items": flow_runs_with_deployment,  # deployment_id가 있는 flow run만 반환
+                "total": filtered_count,
+                "count": filtered_count,
                 "limit": limit,
                 "offset": offset
             }

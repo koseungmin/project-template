@@ -1,7 +1,7 @@
 # _*_ coding: utf-8 _*_
 """Schedule REST API endpoints for Prefect."""
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from src.api.services.schedule_service import ScheduleService
@@ -144,12 +144,17 @@ def get_flow_runs_by_flow_id(
 def get_flow_runs(
     limit: int = Query(100, ge=1, le=1000, description="조회할 개수"),
     offset: int = Query(0, ge=0, description="건너뛸 개수"),
-    deployment_id: Optional[str] = Query(None, description="Deployment ID 필터"),
-    flow_id: Optional[str] = Query(None, description="Flow ID 필터"),
+    deployment_id: Optional[List[str]] = Query(None, description="Deployment ID 필터 (리스트 가능)"),
+    flow_id: Optional[List[str]] = Query(None, description="Flow ID 필터 (리스트 가능)"),
     state_type: Optional[str] = Query(None, description="상태 타입 필터 (PENDING, RUNNING, COMPLETED, FAILED 등)"),
     schedule_service: ScheduleService = Depends(get_schedule_service)
 ):
-    """Flow Run 목록을 조회합니다."""
+    """
+    Flow Run 목록을 조회합니다.
+    
+    deployment_id와 flow_id는 리스트로 여러 개를 전달할 수 있습니다.
+    예: ?deployment_id=id1&deployment_id=id2 또는 ?flow_id=id1&flow_id=id2
+    """
     try:
         result = schedule_service.get_flow_runs(
             limit=limit,
