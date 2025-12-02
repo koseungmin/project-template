@@ -1,9 +1,12 @@
 # _*_ coding: utf-8 _*_
 """Simple Pydantic Settings implementation."""
+import logging
 from typing import List, Optional
 
 from pydantic import Field, validator
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -202,6 +205,17 @@ class Settings(BaseSettings):
     # - 예: /health,/docs,/openapi.json
     jwt_exclude_paths: str = Field(default="/health,/docs,/openapi.json,/redoc,/v1/auth/login,/v1/auth/refresh", env="JWT_EXCLUDE_PATHS")
     
+    # Prefect Schedule Configuration
+    # ==========================================
+    # Prefect API URL
+    # - 기본값: http://0.0.0.0:4200/api (Prefect 서버)
+    prefect_api_url: str = Field(default="http://0.0.0.0:4200/api", env="PREFECT_API_URL")
+    
+    # Deployment Name 리스트 (쉼표로 구분)
+    # - 스케줄 리스트 조회 시 사용할 deployment 이름들 (flow_name과 deployment_name이 같음)
+    # - 예: "document-processing-pipeline,batch-document-processing-pipeline"
+    prefect_deployment_names: str = Field(default="", env="PREFECT_DEPLOYMENT_NAMES")
+    
     def get_cors_origins(self) -> List[str]:
         """CORS origins를 리스트로 반환"""
         return [origin.strip() for origin in self.cors_origins.split(",")]
@@ -215,6 +229,12 @@ class Settings(BaseSettings):
     def get_jwt_exclude_paths(self) -> List[str]:
         """JWT 제외 경로를 리스트로 반환"""
         return self.pget_jwt_exclude_paths()
+    
+    def get_prefect_deployment_names(self) -> List[str]:
+        """Prefect Deployment 이름 리스트 반환 (flow_name과 deployment_name이 같음)"""
+        if not self.prefect_deployment_names:
+            return []
+        return [name.strip() for name in self.prefect_deployment_names.split(",") if name.strip()]
     
     class Config:
         env_file = ".env"  # 로컬 개발용 (파일이 없어도 에러 없음)

@@ -1,10 +1,10 @@
 # _*_ coding: utf-8 _*_
 """Prefect Schedule Service for querying Prefect API."""
 import logging
-import os
-from typing import Dict, List, Optional, Any
-import httpx
+from typing import Any, Dict, List, Optional
 
+import httpx
+from src.config import settings
 from src.types.response.exceptions import HandledException
 from src.types.response.response_code import ResponseCode
 
@@ -15,32 +15,31 @@ class ScheduleService:
     """Prefect API를 호출하여 스케줄 정보를 조회하는 서비스"""
     
     def __init__(self):
-        # Prefect API URL 환경변수에서 가져오기
-        # 기본값: http://localhost:4200/scheduler/api (doc-processor 컨테이너)
-        prefect_api_url = os.getenv(
-            "PREFECT_API_URL", 
-            "http://localhost:4200/scheduler/api"
-        ).rstrip('/')
+        # Prefect API URL 설정에서 가져오기
+        prefect_api_url = settings.prefect_api_url.rstrip('/')
         
-        # Prefect API 버전 (Prefect 3.0)
-        # Prefect 3.0에서는 /api/v1 경로를 사용하지만, 
-        # scheduler/api가 이미 prefix로 붙어있으므로 v1만 추가
+        # Prefect API는 /api 경로를 사용 (v1 없음)
         if "/api" in prefect_api_url:
-            # 이미 /api가 포함된 경우 (예: http://localhost:4200/scheduler/api)
-            self.base_url = f"{prefect_api_url}/v1"
+            # 이미 /api가 포함된 경우 (예: http://0.0.0.0:4200/api)
+            self.base_url = prefect_api_url
         else:
-            # /api가 없는 경우 (예: http://localhost:4200)
-            self.base_url = f"{prefect_api_url}/api/v1"
+            # /api가 없는 경우 (예: http://0.0.0.0:4200)
+            self.base_url = f"{prefect_api_url}/api"
         
         logger.info(f"Prefect Schedule Service initialized with API URL: {self.base_url}")
     
-    def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
+    def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None, json_data: Optional[Dict] = None) -> Dict[str, Any]:
         """Prefect API에 HTTP 요청을 보내는 내부 메서드"""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         
         try:
             with httpx.Client(timeout=30.0) as client:
-                response = client.request(method, url, params=params)
+                if json_data:
+                    # POST 요청 시 JSON 데이터 전송
+                    response = client.request(method, url, json=json_data)
+                else:
+                    # GET 요청 시 params 사용
+                    response = client.request(method, url, params=params)
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as e:
@@ -86,13 +85,61 @@ class ScheduleService:
         """특정 Deployment 조회"""
         return self._make_request("GET", f"/deployments/{deployment_id}")
     
+    def get_deployment_by_name(self, deployment_name: str) -> Dict[str, Any]:
+        """
+        Deployment 이름으로 조회
+        
+        flow_name과 deployment_name이 같다고 가정하지만, 
+        실제로는 다를 수 있으므로 먼저 deployment 목록에서 찾아서 flow_name을 확인합니다.
+        """
+        try:
+            # 먼저 deployment 목록에서 찾기
+            deployments_result = self._make_request("POST", "/deployments/paginate", json_data={"limit": 100})
+            deployments = deployments_result.get("results", [])
+            
+            # deployment_name으로 찾기 (정확히 일치하거나 포함)
+            deployment = None
+            for dep in deployments:
+                if dep.get("name") == deployment_name or dep.get("name").replace("-", "_") == deployment_name.replace("-", "_"):
+                    deployment = dep
+                    break
+            
+            if not deployment:
+                # 찾지 못한 경우, flow_name과 deployment_name이 같다고 가정하고 시도
+                return self._make_request("GET", f"/deployments/name/{deployment_name}/{deployment_name}")
+            
+            # deployment를 찾았으면 flow_id로 flow_name 확인
+            flow_id = deployment.get("flow_id")
+            if flow_id:
+                try:
+                    flow = self._make_request("GET", f"/flows/{flow_id}")
+                    flow_name = flow.get("name")
+                    if flow_name:
+                        # flow_name과 deployment_name으로 정확히 조회
+                        return self._make_request("GET", f"/deployments/name/{flow_name}/{deployment.get('name')}")
+                except Exception:
+                    pass
+            
+            # flow_name을 찾지 못한 경우 deployment 객체 반환
+            return deployment
+            
+        except Exception as e:
+            logger.warning(f"Deployment 목록에서 찾기 실패, 직접 시도: {e}")
+            # 실패 시 flow_name과 deployment_name이 같다고 가정하고 시도
+            return self._make_request("GET", f"/deployments/name/{deployment_name}/{deployment_name}")
+    
     def get_flows(
         self,
         limit: int = 100,
         offset: int = 0,
         name: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Flow 목록 조회"""
+        """
+        Flow 목록 조회
+        
+        Returns:
+            Flow 목록과 total 개수를 포함한 표준 형식으로 반환
+        """
         params = {
             "limit": limit,
             "offset": offset
@@ -101,7 +148,28 @@ class ScheduleService:
         if name:
             params["name"] = name
         
-        return self._make_request("GET", "/flows", params=params)
+        result = self._make_request("GET", "/flows", params=params)
+        
+        # Prefect API 응답 구조에 따라 처리
+        # 응답이 리스트인 경우
+        if isinstance(result, list):
+            flows = result
+            total_count = len(flows)
+        # 응답이 딕셔너리이고 items나 results 필드가 있는 경우
+        elif isinstance(result, dict):
+            flows = result.get("items", result.get("results", result.get("data", [])))
+            total_count = result.get("total", result.get("count", len(flows)))
+        else:
+            flows = []
+            total_count = 0
+        
+        return {
+            "items": flows,
+            "total": total_count,
+            "count": total_count,
+            "limit": limit,
+            "offset": offset
+        }
     
     def get_flow(self, flow_id: str) -> Dict[str, Any]:
         """특정 Flow 조회"""
@@ -113,26 +181,144 @@ class ScheduleService:
         offset: int = 0,
         deployment_id: Optional[str] = None,
         flow_id: Optional[str] = None,
-        state_type: Optional[str] = None
+        state_type: Optional[str] = None,
+        exclude_task_runs: bool = True
     ) -> Dict[str, Any]:
-        """Flow Run 목록 조회"""
-        params = {
+        """
+        Flow Run 목록 조회 (paginate 사용)
+        
+        Args:
+            exclude_task_runs: True인 경우 task run 정보를 제외하고 flow run 레벨만 반환
+        """
+        json_data = {
             "limit": limit,
             "offset": offset
         }
         
         if deployment_id:
-            params["deployment_id"] = deployment_id
+            json_data["deployment_id"] = deployment_id
         if flow_id:
-            params["flow_id"] = flow_id
+            json_data["flow_id"] = flow_id
         if state_type:
-            params["state_type"] = state_type
+            json_data["state_type"] = state_type
         
-        return self._make_request("GET", "/flow_runs", params=params)
+        result = self._make_request("POST", "/flow_runs/paginate", json_data=json_data)
+        # Prefect API의 paginate 응답을 표준 형식으로 변환
+        # count 필드가 있으면 사용, 없으면 results 길이 사용
+        total_count = result.get("count", len(result.get("results", [])))
+        
+        flow_runs = result.get("results", [])
+        
+        # task run 정보 제외하고 flow run 레벨만 반환
+        if exclude_task_runs:
+            flow_run_summaries = []
+            for flow_run in flow_runs:
+                # Flow Run 레벨 정보만 추출 (task run 정보 완전 제외)
+                flow_run_summary = {
+                    "id": flow_run.get("id"),
+                    "name": flow_run.get("name"),
+                    "flow_id": flow_run.get("flow_id"),
+                    "flow_name": flow_run.get("flow_name"),
+                    "deployment_id": flow_run.get("deployment_id"),
+                    "deployment_name": flow_run.get("deployment_name"),
+                    "state_type": flow_run.get("state_type"),
+                    "state_name": flow_run.get("state_name"),
+                    "start_time": flow_run.get("start_time"),
+                    "end_time": flow_run.get("end_time"),
+                    "expected_start_time": flow_run.get("expected_start_time"),
+                    "created": flow_run.get("created"),
+                    "updated": flow_run.get("updated"),
+                    "run_count": flow_run.get("run_count", 0),
+                    # task_runs, task_run_id 등 task run 관련 필드는 완전히 제외
+                }
+                
+                # state 객체에서 task run 정보 제거
+                state = flow_run.get("state")
+                if state and isinstance(state, dict):
+                    state_summary = {
+                        "id": state.get("id"),
+                        "type": state.get("type"),
+                        "name": state.get("name"),
+                        "message": state.get("message"),
+                        "timestamp": state.get("timestamp"),
+                        # task_runs, task_run_id 등 task run 관련 필드는 제외
+                    }
+                    flow_run_summary["state"] = state_summary
+                else:
+                    flow_run_summary["state"] = state
+                
+                flow_run_summaries.append(flow_run_summary)
+            
+            return {
+                "items": flow_run_summaries,  # task run 정보가 제외된 flow run만 반환
+                "total": total_count,
+                "count": total_count,
+                "limit": limit,
+                "offset": offset
+            }
+        else:
+            # task run 정보 포함 (기존 동작)
+            return {
+                "items": flow_runs,
+                "total": total_count,
+                "count": total_count,
+                "limit": limit,
+                "offset": offset
+            }
+    
+    def get_flow_runs_by_flow_id(
+        self,
+        flow_id: str,
+        limit: int = 100,
+        offset: int = 0,
+        state_type: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        특정 Flow의 Flow Run 목록 조회 (Flow 단위, Task Run 정보 제외)
+        
+        화면에서 flow를 클릭해서 list로 들어갈 때 사용하는 메서드입니다.
+        Flow Run 레벨 정보만 반환하며, Task Run 정보는 제외합니다.
+        
+        Args:
+            flow_id: Flow ID
+            limit: 조회할 개수
+            offset: 건너뛸 개수
+            state_type: 상태 타입 필터
+        
+        Returns:
+            Flow Run 목록 (Task Run 정보 제외)
+        """
+        # flow_id로 flow_runs 조회
+        # get_flow_runs가 이미 task run 정보를 제외하고 flow run 레벨만 반환함
+        flow_runs_result = self.get_flow_runs(
+            limit=limit,
+            offset=offset,
+            flow_id=flow_id,
+            state_type=state_type,
+            exclude_task_runs=True  # task run 정보 제외하고 flow run 레벨만 반환
+        )
+        
+        return {
+            "flow_id": flow_id,
+            "total": flow_runs_result.get("total", 0),
+            "count": flow_runs_result.get("count", flow_runs_result.get("total", 0)),
+            "limit": limit,
+            "offset": offset,
+            "items": flow_runs_result.get("items", [])  # task run 정보가 제외된 Flow Run 목록만 반환
+        }
     
     def get_flow_run(self, flow_run_id: str) -> Dict[str, Any]:
         """특정 Flow Run 조회"""
         return self._make_request("GET", f"/flow_runs/{flow_run_id}")
+    
+    def get_flow_run_logs(self, flow_run_id: str) -> Dict[str, Any]:
+        """Flow Run 로그 조회"""
+        # Prefect API는 /api/logs/filter를 사용하여 flow_run_id로 필터링
+        json_data = {
+            "flow_runs": {"id": {"any_": [flow_run_id]}},
+            "limit": 1000
+        }
+        return self._make_request("POST", "/logs/filter", json_data=json_data)
     
     def get_work_pools(
         self,
@@ -247,5 +433,126 @@ class ScheduleService:
             raise HandledException(
                 ResponseCode.INTERNAL_SERVER_ERROR,
                 msg=f"스케줄 목록 조회 실패: {str(e)}"
+            )
+    
+    def get_schedule_list(self) -> Dict[str, Any]:
+        """
+        환경변수에 설정된 deployment_name 리스트를 기반으로 스케줄 리스트 조회
+        
+        각 deployment_name으로 deployment를 조회하고 (flow_name과 deployment_name이 같음),
+        모든 결과를 합쳐서 반환합니다.
+        """
+        try:
+            deployment_names = settings.get_prefect_deployment_names()
+            
+            if not deployment_names:
+                logger.warning("PREFECT_DEPLOYMENT_NAMES 환경변수가 설정되지 않았습니다.")
+                return {
+                    "items": [],
+                    "total": 0
+                }
+            
+            schedules = []
+            errors = []
+            
+            # 각 deployment_name으로 조회 (flow_name과 deployment_name이 같음)
+            for deployment_name in deployment_names:
+                try:
+                    # GET /deployments/name/{deployment_name}/{deployment_name} 호출
+                    deployment = self.get_deployment_by_name(deployment_name)
+                    
+                    # deployment_id 추출
+                    deployment_id = deployment.get("id")
+                    if not deployment_id:
+                        logger.warning(f"Deployment '{deployment_name}'에서 id를 찾을 수 없습니다.")
+                        continue
+                    
+                    # 스케줄 정보 구성
+                    schedule_item = {
+                        "deployment_id": deployment_id,
+                        "deployment_name": deployment.get("name"),
+                        "flow_id": deployment.get("flow_id"),
+                        "flow_name": deployment.get("flow_name"),
+                        "schedule": deployment.get("schedule"),
+                        "is_schedule_active": deployment.get("is_schedule_active", True),
+                        "created": deployment.get("created"),
+                        "updated": deployment.get("updated")
+                    }
+                    schedules.append(schedule_item)
+                    
+                except Exception as e:
+                    error_msg = f"Deployment '{deployment_name}' 조회 실패: {str(e)}"
+                    logger.error(error_msg)
+                    errors.append({
+                        "deployment_name": deployment_name,
+                        "error": str(e)
+                    })
+            
+            return {
+                "items": schedules,
+                "total": len(schedules),
+                "errors": errors if errors else None
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get schedule list: {e}")
+            raise HandledException(
+                ResponseCode.INTERNAL_SERVER_ERROR,
+                msg=f"스케줄 리스트 조회 실패: {str(e)}"
+            )
+    
+    def get_schedule_history(self, deployment_name: str, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
+        """
+        특정 스케줄의 실행 이력 조회 (Deployment 스케줄 단위)
+        
+        화면에서 deployment로 스케줄을 걸었을 때, 그 스케줄로 실행된 flow run 이력들을 조회합니다.
+        
+        Args:
+            deployment_name: Deployment 이름
+            limit: 조회할 개수
+            offset: 건너뛸 개수
+        
+        Returns:
+            해당 deployment의 스케줄로 실행된 Flow Run 목록 (Task Run 정보 제외)
+        """
+        try:
+            # 1. deployment_name으로 deployment 조회하여 deployment_id 얻기
+            deployment = self.get_deployment_by_name(deployment_name)
+            deployment_id = deployment.get("id")
+            flow_id = deployment.get("flow_id")
+            
+            if not deployment_id:
+                raise HandledException(
+                    ResponseCode.NOT_FOUND,
+                    msg=f"Deployment '{deployment_name}'를 찾을 수 없습니다."
+                )
+            
+            # 2. deployment_id로 flow_runs 조회 (해당 deployment의 스케줄로 실행된 flow run만 조회)
+            # get_flow_runs가 이미 task run 정보를 제외하고 flow run 레벨만 반환함
+            flow_runs_result = self.get_flow_runs(
+                limit=limit,
+                offset=offset,
+                deployment_id=deployment_id,  # deployment_id로 필터링하여 해당 스케줄의 실행 이력만 조회
+                exclude_task_runs=True  # task run 정보 제외하고 flow run 레벨만 반환
+            )
+            
+            return {
+                "deployment_id": deployment_id,
+                "deployment_name": deployment_name,
+                "flow_id": flow_id,
+                "total": flow_runs_result.get("total", 0),
+                "count": flow_runs_result.get("count", flow_runs_result.get("total", 0)),
+                "limit": limit,
+                "offset": offset,
+                "items": flow_runs_result.get("items", [])  # task run 정보가 제외된 Flow Run 목록만 반환
+            }
+            
+        except HandledException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get schedule history for {deployment_name}: {e}")
+            raise HandledException(
+                ResponseCode.INTERNAL_SERVER_ERROR,
+                msg=f"스케줄 실행 이력 조회 실패: {str(e)}"
             )
 
