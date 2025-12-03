@@ -6,10 +6,11 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from src.api.services.document_service import DocumentService
-from src.core.dependencies import get_document_service
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import StreamingResponse
+
+from src.api.services.document_service import DocumentService
+from src.core.dependencies import get_document_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["document-management"])
@@ -199,11 +200,13 @@ def download_document(
     import urllib.parse
     encoded_filename = urllib.parse.quote(filename.encode('utf-8'))
     
+    # Content-Disposition 헤더: filename과 filename* 둘 다 설정하여 호환성 확보
+    # filename은 ASCII만, filename*는 UTF-8 인코딩된 파일명
     return StreamingResponse(
         io.BytesIO(file_content),
         media_type=media_type,
         headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+            "Content-Disposition": f'attachment; filename*=UTF-8\'\'{encoded_filename}'
         }
     )
 
@@ -669,39 +672,32 @@ def get_processing_progress(
     document_service: DocumentService = Depends(get_document_service)
 ):
     """특정 처리 작업의 실시간 진행률 조회"""
-    try:
-        progress = document_service.get_processing_job_progress(job_id)
-        if not progress:
-            return {
-                "status": "error",
-                "message": "처리 작업을 찾을 수 없습니다"
-            }
-            
-        # 진행률 계산
-        progress_percent = 0
-        if progress.get('total_steps', 0) > 0:
-            progress_percent = (progress.get('completed_steps', 0) / progress.get('total_steps', 1)) * 100
-            
+    progress = document_service.get_processing_job_progress(job_id)
+    if not progress:
         return {
-            "status": "success",
-            "data": {
-                "job_id": job_id,
-                "progress_percent": round(progress_percent, 1),
-                "current_step": progress.get('current_step', ''),
-                "completed_steps": progress.get('completed_steps', 0),
-                "total_steps": progress.get('total_steps', 0),
-                "job_status": progress.get('status', 'unknown'),
-                "started_at": progress.get('started_at', ''),
-                "updated_at": progress.get('updated_at', ''),
-                "result_data": progress.get('result_data', {})
-            }
+            "status": "error",
+            "message": "처리 작업을 찾을 수 없습니다"
         }
-    except Exception as e:
-        logger.error(f"처리 진행률 조회 실패: {str(e)}")
-        return {
-            "status": "error", 
-            "message": f"진행률 조회 실패: {str(e)}"
+        
+    # 진행률 계산
+    progress_percent = 0
+    if progress.get('total_steps', 0) > 0:
+        progress_percent = (progress.get('completed_steps', 0) / progress.get('total_steps', 1)) * 100
+        
+    return {
+        "status": "success",
+        "data": {
+            "job_id": job_id,
+            "progress_percent": round(progress_percent, 1),
+            "current_step": progress.get('current_step', ''),
+            "completed_steps": progress.get('completed_steps', 0),
+            "total_steps": progress.get('total_steps', 0),
+            "job_status": progress.get('status', 'unknown'),
+            "started_at": progress.get('started_at', ''),
+            "updated_at": progress.get('updated_at', ''),
+            "result_data": progress.get('result_data', {})
         }
+    }
 
 
 
