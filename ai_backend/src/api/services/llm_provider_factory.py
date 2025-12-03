@@ -189,8 +189,18 @@ class ExternalAPIProvider(BaseLLMProvider):
         
         logger.info("External API provider initialized with URL: " + str(self.api_url))
     
-    async def create_completion(self, messages: list, stream: bool = False, chat_id: str = None, user_id: str = None):
-        """Create completion using External API via LangServe RemoteRunnable"""
+    async def create_completion(self, messages: list, stream: bool = False, chat_id: str = None, user_id: str = None, 
+                                 postprocess_and_stream: bool = False, postprocess_func=None):
+        """Create completion using External API via LangServe RemoteRunnable
+        
+        Args:
+            messages: 메시지 리스트
+            stream: True면 실제 스트리밍, False면 non-streaming
+            chat_id: 채팅 ID
+            user_id: 사용자 ID
+            postprocess_and_stream: True면 non-streaming으로 받아서 후처리 후 스트리밍처럼 전달
+            postprocess_func: 후처리 함수 (content: str) -> str
+        """
         try:
             # OpenAI 형식의 messages를 LangServe 형식으로 변환
             langserve_messages = []
@@ -244,8 +254,11 @@ class ExternalAPIProvider(BaseLLMProvider):
                 "additional_kwargs": additional_kwargs
             }
             
-            if stream:
-                # 스트리밍의 경우 async generator를 직접 반환
+            if postprocess_and_stream:
+                # 후처리 후 스트리밍: non-streaming으로 받아서 후처리한 뒤 스트리밍처럼 전달
+                return self._create_postprocessed_streaming_completion(request_body, postprocess_func)
+            elif stream:
+                # 실제 스트리밍의 경우 async generator를 직접 반환
                 return self._create_streaming_completion(request_body)
             else:
                 return await self._create_non_streaming_completion(request_body)
@@ -339,6 +352,62 @@ class ExternalAPIProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"LangServe non-streaming error: {e}")
             raise HandledException(ResponseCode.CHAT_AI_RESPONSE_ERROR, e=e)
+    
+    async def _create_postprocessed_streaming_completion(self, request_body: dict, postprocess_func=None):
+        """Non-streaming으로 전체 응답을 받아서 후처리한 뒤 스트리밍처럼 전달"""
+        import asyncio
+        
+        try:
+            # Non-streaming으로 전체 응답 받기
+            response_data = await self.agent.ainvoke(request_body)
+            
+            # 응답에서 content 추출
+            content = self._extract_content_from_response(response_data)
+            
+            # 후처리 함수가 있으면 적용
+            if postprocess_func and callable(postprocess_func):
+                try:
+                    if asyncio.iscoroutinefunction(postprocess_func):
+                        content = await postprocess_func(content)
+                    else:
+                        content = postprocess_func(content)
+                    logger.debug("Post-processing applied to response")
+                except Exception as e:
+                    logger.warning(f"Post-processing error: {e}, using original content")
+            
+            # 후처리된 내용을 청크 단위로 나눠서 스트리밍
+            chunk_size = 10  # 한 번에 전달할 문자 수 (타이핑 효과를 위해 작게 설정)
+            for i in range(0, len(content), chunk_size):
+                chunk_content = content[i:i + chunk_size]
+                yield self._create_chunk_object({'content': chunk_content})
+                # 자연스러운 타이핑 효과를 위한 작은 지연
+                await asyncio.sleep(0.02)  # 20ms 지연
+                
+        except Exception as e:
+            logger.error(f"LangServe postprocessed streaming error: {e}")
+            raise HandledException(ResponseCode.CHAT_AI_RESPONSE_ERROR, e=e)
+    
+    def _extract_content_from_response(self, response_data: dict) -> str:
+        """응답 데이터에서 content 추출"""
+        # LangServe 응답 구조에 따라 content 추출
+        if isinstance(response_data, dict):
+            # final_result가 있으면 사용
+            if "final_result" in response_data:
+                return str(response_data["final_result"])
+            # content 필드가 있으면 사용
+            elif "content" in response_data:
+                return str(response_data["content"])
+            # text 필드가 있으면 사용
+            elif "text" in response_data:
+                return str(response_data["text"])
+            # 전체를 문자열로 변환
+            else:
+                return str(response_data)
+        elif isinstance(response_data, str):
+            return response_data
+        else:
+            # 기타 타입은 문자열로 변환
+            return str(response_data)
     
     def _create_chunk_object(self, chunk_data: dict):
         """External API 응답을 OpenAI 스타일 청크 객체로 변환"""

@@ -485,16 +485,56 @@ class LLMChatService:
                 return
             
             # LLM 제공자를 통한 스트리밍 API 호출 (ExternalAPIProvider인 경우 chat_id, user_id 전달)
+            # ExternalAPIProvider인 경우 후처리 후 스트리밍 옵션 사용 가능
             if hasattr(self.llm_provider, 'create_completion'):
                 # create_completion 메서드의 시그니처를 확인하여 chat_id, user_id 지원 여부 판단
                 import inspect
                 sig = inspect.signature(self.llm_provider.create_completion)
+                
+                # 후처리 함수 정의 (필요시 수정)
+                def postprocess_content(content: str) -> str:
+                    """응답 후처리 함수 - 필요에 따라 수정 가능"""
+                    # 예시: 특정 패턴 치환, 포맷팅 등
+                    # content = content.replace("old", "new")
+                    return content
+                
+                # 후처리 후 스트리밍 옵션 사용 여부 확인
+                use_postprocess_stream = 'postprocess_and_stream' in sig.parameters
+                
                 if 'chat_id' in sig.parameters and 'user_id' in sig.parameters:
-                    stream = await self.llm_provider.create_completion(messages, stream=True, chat_id=chat_id, user_id=user_id)
+                    if use_postprocess_stream:
+                        # 후처리 후 스트리밍 모드 사용: non-streaming으로 받아서 후처리한 뒤 스트리밍처럼 전달
+                        stream = await self.llm_provider.create_completion(
+                            messages, 
+                            stream=False,  # 실제로는 non-streaming으로 받음
+                            chat_id=chat_id, 
+                            user_id=user_id,
+                            postprocess_and_stream=True,
+                            postprocess_func=postprocess_content
+                        )
+                    else:
+                        stream = await self.llm_provider.create_completion(messages, stream=True, chat_id=chat_id, user_id=user_id)
                 elif 'chat_id' in sig.parameters:
-                    stream = await self.llm_provider.create_completion(messages, stream=True, chat_id=chat_id)
+                    if use_postprocess_stream:
+                        stream = await self.llm_provider.create_completion(
+                            messages, 
+                            stream=False,
+                            chat_id=chat_id,
+                            postprocess_and_stream=True,
+                            postprocess_func=postprocess_content
+                        )
+                    else:
+                        stream = await self.llm_provider.create_completion(messages, stream=True, chat_id=chat_id)
                 else:
-                    stream = await self.llm_provider.create_completion(messages, stream=True)
+                    if use_postprocess_stream:
+                        stream = await self.llm_provider.create_completion(
+                            messages, 
+                            stream=False,
+                            postprocess_and_stream=True,
+                            postprocess_func=postprocess_content
+                        )
+                    else:
+                        stream = await self.llm_provider.create_completion(messages, stream=True)
             else:
                 stream = await self.llm_provider.create_completion(messages, stream=True)
             
