@@ -4,7 +4,6 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import httpx
-
 from src.config import settings
 from src.types.response.exceptions import HandledException
 from src.types.response.response_code import ResponseCode
@@ -205,23 +204,86 @@ class ScheduleService:
         
         result = self._make_request("POST", "/flow_runs/paginate", json_data=json_data)
         # Prefect API의 paginate 응답을 표준 형식으로 변환
-        # count 필드가 있으면 사용, 없으면 results 길이 사용
-        total_count = result.get("count", len(result.get("results", [])))
+        # Prefect API 응답 구조: {"count": 필터조건에맞는전체개수, "results": [현재페이지결과]}
+        # count는 limit/offset 적용 전의 필터 조건에 맞는 전체 개수여야 함
+        
+        # 응답 구조 디버깅 (개발 중에만 활성화)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Paginate response keys: {result.keys()}")
+            logger.debug(f"Paginate response count: {result.get('count')}")
+            logger.debug(f"Paginate response results length: {len(result.get('results', []))}")
+            logger.debug(f"Request params: limit={limit}, offset={offset}, filters={json_data}")
+        
+        total_count = result.get("count")
+        
+        # count가 None이거나 잘못된 값인 경우 처리
+        if total_count is None:
+            logger.warning(f"Paginate response missing 'count' field. Response keys: {result.keys()}")
+            # limit=0으로 전체 개수만 조회 시도 (results는 빈 배열이지만 count는 전체 개수 반환)
+            try:
+                count_json_data = {k: v for k, v in json_data.items() if k != "offset"}
+                count_json_data["limit"] = 0  # limit=0으로 설정하여 전체 개수만 가져오기
+                count_result = self._make_request("POST", "/flow_runs/paginate", json_data=count_json_data)
+                total_count = count_result.get("count", len(result.get("results", [])))
+                logger.info(f"Got total count from limit=0 query: {total_count}")
+            except Exception as e:
+                logger.warning(f"Failed to get total count with limit=0: {e}")
+                # fallback: 현재 페이지 결과 개수 사용 (부정확하지만 최소한의 정보 제공)
+                total_count = len(result.get("results", []))
+        elif total_count == 0 and len(result.get("results", [])) > 0:
+            # count가 0인데 results가 있는 경우는 이상함, 로깅
+            logger.warning(f"Count is 0 but results exist. This may indicate an API issue.")
         
         flow_runs = result.get("results", [])
         
         # task run 정보 제외하고 flow run 레벨만 반환
         if exclude_task_runs:
+            # flow_name과 deployment_name을 가져오기 위해 flow_id와 deployment_id 수집
+            flow_ids = set()
+            deployment_ids = set()
+            for flow_run in flow_runs:
+                flow_id = flow_run.get("flow_id")
+                deployment_id = flow_run.get("deployment_id")
+                if flow_id:
+                    flow_ids.add(flow_id)
+                if deployment_id:
+                    deployment_ids.add(deployment_id)
+            
+            # flow_id와 deployment_id로 이름 정보 조회 (배치 처리)
+            flow_name_map = {}
+            deployment_name_map = {}
+            
+            # Flow 이름 조회
+            for flow_id in flow_ids:
+                try:
+                    flow_info = self.get_flow(flow_id)
+                    flow_name_map[flow_id] = flow_info.get("name")
+                except Exception as e:
+                    logger.warning(f"Failed to get flow name for {flow_id}: {e}")
+                    flow_name_map[flow_id] = None
+            
+            # Deployment 이름 조회
+            for deployment_id in deployment_ids:
+                try:
+                    deployment_info = self.get_deployment(deployment_id)
+                    deployment_name_map[deployment_id] = deployment_info.get("name")
+                except Exception as e:
+                    logger.warning(f"Failed to get deployment name for {deployment_id}: {e}")
+                    deployment_name_map[deployment_id] = None
+            
             flow_run_summaries = []
             for flow_run in flow_runs:
+                flow_id = flow_run.get("flow_id")
+                deployment_id = flow_run.get("deployment_id")
+                
                 # Flow Run 레벨 정보만 추출 (task run 정보 완전 제외)
                 flow_run_summary = {
                     "id": flow_run.get("id"),
                     "name": flow_run.get("name"),
-                    "flow_id": flow_run.get("flow_id"),
-                    "flow_name": flow_run.get("flow_name"),
-                    "deployment_id": flow_run.get("deployment_id"),
-                    "deployment_name": flow_run.get("deployment_name"),
+                    "flow_id": flow_id,
+                    "flow_name": flow_name_map.get(flow_id) if flow_id else None,
+                    "deployment_id": deployment_id,
+                    "deployment_name": deployment_name_map.get(deployment_id) if deployment_id else None,
                     "state_type": flow_run.get("state_type"),
                     "state_name": flow_run.get("state_name"),
                     "start_time": flow_run.get("start_time"),
@@ -360,6 +422,107 @@ class ScheduleService:
             "limit": 1000
         }
         return self._make_request("POST", "/logs/filter", json_data=json_data)
+    
+    def set_flow_run_state(
+        self,
+        flow_run_id: str,
+        state_type: str,
+        name: Optional[str] = None,
+        message: Optional[str] = None,
+        force: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Flow Run 상태 변경
+        
+        Prefect API의 set_state 엔드포인트를 사용하여 flow run의 상태를 변경합니다.
+        orchestration rules가 적용되어 상태 전이가 거부될 수 있습니다.
+        
+        Args:
+            flow_run_id: Flow Run ID
+            state_type: 상태 타입 (SCHEDULED, PENDING, RUNNING, COMPLETED, FAILED, 
+                       CANCELLED, CRASHED, PAUSED, CANCELLING)
+            name: 상태 이름 (선택사항)
+            message: 상태 메시지 (선택사항)
+            force: True인 경우 orchestration rules를 무시하고 강제로 상태 변경
+        
+        Returns:
+            상태 변경 결과 (state, status, details 포함)
+            
+        참고:
+            - status는 ACCEPT, REJECT, ABORT, WAIT 중 하나
+            - force=False인 경우 Prefect의 상태 전이 규칙이 적용됨
+        """
+        try:
+            json_data = {
+                "state": {
+                    "type": state_type
+                },
+                "force": force
+            }
+            
+            if name:
+                json_data["state"]["name"] = name
+            if message:
+                json_data["state"]["message"] = message
+            
+            result = self._make_request("POST", f"/flow_runs/{flow_run_id}/set_state", json_data=json_data)
+            logger.info(f"Flow run {flow_run_id} state changed to {state_type}, status: {result.get('status')}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to set flow run state for {flow_run_id}: {e}")
+            raise HandledException(
+                ResponseCode.INTERNAL_SERVER_ERROR,
+                msg=f"Flow Run 상태 변경 실패: {str(e)}"
+            )
+    
+    def cancel_flow_run(self, flow_run_id: str, message: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Flow Run 취소
+        
+        실행 중이거나 대기 중인 flow run을 취소합니다.
+        
+        Args:
+            flow_run_id: Flow Run ID
+            message: 취소 메시지 (선택사항)
+        
+        Returns:
+            상태 변경 결과
+        """
+        cancel_message = message or "Cancelled by user"
+        return self.set_flow_run_state(
+            flow_run_id=flow_run_id,
+            state_type="CANCELLED",
+            name="Cancelled",
+            message=cancel_message,
+            force=False
+        )
+    
+    def retry_flow_run(self, flow_run_id: str, message: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Flow Run 재시도
+        
+        실패하거나 취소된 flow run을 재시도하기 위해 PENDING 상태로 변경합니다.
+        
+        Args:
+            flow_run_id: Flow Run ID
+            message: 재시도 메시지 (선택사항)
+        
+        Returns:
+            상태 변경 결과
+            
+        참고:
+            - 실패한 flow run을 재시도하려면 PENDING 또는 SCHEDULED 상태로 변경
+            - orchestration rules에 따라 상태 전이가 거부될 수 있음
+        """
+        retry_message = message or "Retrying failed flow run"
+        return self.set_flow_run_state(
+            flow_run_id=flow_run_id,
+            state_type="PENDING",
+            name="Pending",
+            message=retry_message,
+            force=False
+        )
     
     def get_work_pools(
         self,

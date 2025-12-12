@@ -386,6 +386,106 @@ def get_flow_run_parameters(
         )
 
 
+@router.post("/schedules/flow-runs/{flow_run_id}/set-state")
+def set_flow_run_state(
+    flow_run_id: str,
+    state_type: str = Body(..., description="상태 타입 (SCHEDULED, PENDING, RUNNING, COMPLETED, FAILED, CANCELLED, CRASHED, PAUSED, CANCELLING)"),
+    name: Optional[str] = Body(None, description="상태 이름"),
+    message: Optional[str] = Body(None, description="상태 메시지"),
+    force: bool = Body(False, description="Orchestration rules 무시 여부"),
+    schedule_service: ScheduleService = Depends(get_schedule_service)
+):
+    """
+    Flow Run의 상태를 변경합니다.
+    
+    Prefect API의 set_state 엔드포인트를 사용하여 flow run의 상태를 변경합니다.
+    orchestration rules가 적용되어 상태 전이가 거부될 수 있습니다.
+    
+    상태 타입:
+    - SCHEDULED: 스케줄된 상태
+    - PENDING: 대기 중
+    - RUNNING: 실행 중
+    - COMPLETED: 완료
+    - FAILED: 실패
+    - CANCELLED: 취소됨
+    - CRASHED: 크래시됨
+    - PAUSED: 일시정지됨
+    - CANCELLING: 취소 중
+    
+    응답 상태:
+    - ACCEPT: 상태 변경 수락됨
+    - REJECT: 상태 변경 거부됨
+    - ABORT: 중단됨
+    - WAIT: 대기 중
+    """
+    try:
+        result = schedule_service.set_flow_run_state(
+            flow_run_id=flow_run_id,
+            state_type=state_type,
+            name=name,
+            message=message,
+            force=force
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to set flow run state for {flow_run_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Flow Run 상태 변경 실패: {str(e)}"
+        )
+
+
+@router.post("/schedules/flow-runs/{flow_run_id}/cancel")
+def cancel_flow_run(
+    flow_run_id: str,
+    message: Optional[str] = Body(None, description="취소 메시지"),
+    schedule_service: ScheduleService = Depends(get_schedule_service)
+):
+    """
+    Flow Run을 취소합니다.
+    
+    실행 중이거나 대기 중인 flow run을 취소합니다.
+    """
+    try:
+        result = schedule_service.cancel_flow_run(
+            flow_run_id=flow_run_id,
+            message=message
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to cancel flow run {flow_run_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Flow Run 취소 실패: {str(e)}"
+        )
+
+
+@router.post("/schedules/flow-runs/{flow_run_id}/retry")
+def retry_flow_run(
+    flow_run_id: str,
+    message: Optional[str] = Body(None, description="재시도 메시지"),
+    schedule_service: ScheduleService = Depends(get_schedule_service)
+):
+    """
+    Flow Run을 재시도합니다.
+    
+    실패하거나 취소된 flow run을 재시도하기 위해 PENDING 상태로 변경합니다.
+    orchestration rules에 따라 상태 전이가 거부될 수 있습니다.
+    """
+    try:
+        result = schedule_service.retry_flow_run(
+            flow_run_id=flow_run_id,
+            message=message
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to retry flow run {flow_run_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Flow Run 재시도 실패: {str(e)}"
+        )
+
+
 @router.post("/schedules/deployments/{deployment_id}/create-flow-run")
 def create_flow_run(
     deployment_id: str,

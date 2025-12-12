@@ -322,7 +322,7 @@ class ChatCRUD:
             logger.error(f"Database error saving AI message generating: {str(e)}")
             raise HandledException(ResponseCode.DATABASE_QUERY_ERROR, e=e)
     
-    def update_ai_message_completed(self, message_id: str, content: str, external_api_nodes: dict = None):
+    def update_ai_message_completed(self, message_id: str, content: str, external_api_nodes: dict = None, ref_document: str = None):
         """AI 메시지를 완료 상태로 업데이트"""
         try:
             self.update_message_status(message_id, "completed")
@@ -337,6 +337,11 @@ class ChatCRUD:
                     
                     # reviewer_type이 있는지 체크하고 증가
                     self._check_and_increment_reviewer_count(external_api_nodes, message.chat_id)
+                
+                # 참조 문서 정보 저장
+                if ref_document:
+                    message.ref_document = ref_document
+                    logger.debug(f"Saved ref_document for message {message_id}: {ref_document[:100] if isinstance(ref_document, str) else ref_document}")
                 
                 self.session.commit()
         except Exception as e:

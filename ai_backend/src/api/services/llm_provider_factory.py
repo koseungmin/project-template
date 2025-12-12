@@ -174,6 +174,7 @@ class ExternalAPIProvider(BaseLLMProvider):
         self.api_url = api_url.rstrip('/')
         self.authorization_header = authorization_header
         self.node_data = {}  # 노드 데이터를 메모리에 수집
+        self.ref_document = None  # agent__app 노드에서 추출한 참조 문서 정보
         self.chat_crud = chat_crud  # DB 접근을 위한 ChatCRUD 인스턴스
         self.user_crud = user_crud  # DB 접근을 위한 UserCRUD 인스턴스
         
@@ -278,6 +279,9 @@ class ExternalAPIProvider(BaseLLMProvider):
                 content = self._extract_content_from_chunk(chunk)
                 if content is not None:
                     yield self._create_chunk_object({'content': content})
+            
+            # 스트리밍 완료 후 ref_document 추출
+            self._extract_ref_document_from_node_data()
                     
         except Exception as e:
             logger.error(f"LangServe streaming error: {e}")
@@ -313,16 +317,20 @@ class ExternalAPIProvider(BaseLLMProvider):
     
     def _store_node_data(self, chunk_data: dict):
         """노드 결과 데이터를 메모리에 수집 (LangServe 스타일)"""
+        import copy
+
         # 노드 기본 정보 추출
         node_name = chunk_data.get('node_name', 'unknown')
         node_type = chunk_data.get('node_type', 'unknown')
         updates = chunk_data.get('updates', {})
         
-        # 노드 데이터 구조화
+        # 노드 데이터 구조화 (updates는 복사본 사용)
+        updates_copy = copy.deepcopy(updates)
+        
         node_data = {
             'node_name': node_name,
             'node_type': node_type,
-            'updates': updates
+            'updates': updates_copy
         }
         
         # 추가 필드들도 포함
@@ -341,6 +349,27 @@ class ExternalAPIProvider(BaseLLMProvider):
     def clear_node_data(self):
         """노드 데이터 초기화"""
         self.node_data.clear()
+        self.ref_document = None
+    
+    def get_ref_document(self):
+        """추출된 참조 문서 정보 반환"""
+        return self.ref_document
+    
+    def _extract_ref_document_from_node_data(self):
+        """수집된 node 데이터에서 ref_document 추출"""
+        node_data = self.get_collected_node_data()
+        agent_app_node = node_data.get('agent__app_1', {})
+        
+        if agent_app_node.get('node_type') == 'agent__app':
+            updates = agent_app_node.get('updates', {})
+            additional_kwargs = updates.get('additional_kwargs', {})
+            if isinstance(additional_kwargs, dict):
+                # content_로 시작하는 키 찾기
+                for key, value in additional_kwargs.items():
+                    if isinstance(key, str) and key.startswith('content_'):
+                        self.ref_document = value
+                        logger.debug(f"Extracted ref_document from {key}: {value[:100] if isinstance(value, str) else value}")
+                        break
     
     
     async def _create_non_streaming_completion(self, request_body: dict):
@@ -354,17 +383,37 @@ class ExternalAPIProvider(BaseLLMProvider):
             raise HandledException(ResponseCode.CHAT_AI_RESPONSE_ERROR, e=e)
     
     async def _create_postprocessed_streaming_completion(self, request_body: dict, postprocess_func=None):
-        """Non-streaming으로 전체 응답을 받아서 후처리한 뒤 스트리밍처럼 전달"""
+        """Non-streaming으로 전체 응답을 받아서 후처리한 뒤 스트리밍처럼 전달
+        astream을 사용하여 node 정보도 수집함"""
         import asyncio
+        import copy
         
         try:
-            # Non-streaming으로 전체 응답 받기
-            response_data = await self.agent.ainvoke(request_body)
+            # astream을 사용하여 모든 청크를 수집하면서 node 정보 저장
+            content_parts = []
             
-            # 응답에서 content 추출
-            content = self._extract_content_from_response(response_data)
+            async for chunk in self.agent.astream(request_body):
+                logger.debug(f"Received chunk for postprocessing: {chunk}")
+                
+                # node 정보가 있으면 저장 (기존 스트리밍과 동일하게 처리)
+                if isinstance(chunk, dict):
+                    if chunk.get("updates"):
+                        # 노드 업데이트는 스트리밍하지 않지만 데이터 저장
+                        logger.debug(f"Node updates in postprocessing: {chunk}")
+                        self._store_node_data(chunk)
+                    
+                    # content 추출 (final_result, content, text 등)
+                    chunk_content = self._extract_content_from_chunk(chunk)
+                    if chunk_content is not None:
+                        content_parts.append(chunk_content)
             
-            # 후처리 함수가 있으면 적용
+            # 수집된 content를 합치기
+            content = "".join(content_parts) if content_parts else ""
+            
+            # node 데이터에서 ref_document 추출
+            self._extract_ref_document_from_node_data()
+            
+            # 후처리 함수가 있으면 적용 (content만 전달)
             if postprocess_func and callable(postprocess_func):
                 try:
                     if asyncio.iscoroutinefunction(postprocess_func):

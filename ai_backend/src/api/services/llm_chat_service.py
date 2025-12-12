@@ -493,7 +493,14 @@ class LLMChatService:
                 
                 # 후처리 함수 정의 (필요시 수정)
                 def postprocess_content(content: str) -> str:
-                    """응답 후처리 함수 - 필요에 따라 수정 가능"""
+                    """응답 후처리 함수 - 필요에 따라 수정 가능
+                    
+                    Args:
+                        content: 응답 내용
+                    
+                    Returns:
+                        후처리된 응답 내용
+                    """
                     # 예시: 특정 패턴 치환, 포맷팅 등
                     # content = content.replace("old", "new")
                     return content
@@ -596,13 +603,22 @@ class LLMChatService:
                 # External API provider인 경우 노드 데이터 저장
                 if hasattr(self.llm_provider, 'get_collected_node_data'):
                     node_data = self.llm_provider.get_collected_node_data()
+                    # ref_document 추출 (agent__app 노드에서) - 먼저 추출 메서드 호출
+                    ref_document = None
+                    if hasattr(self.llm_provider, '_extract_ref_document_from_node_data'):
+                        # 노드 데이터에서 ref_document 추출
+                        self.llm_provider._extract_ref_document_from_node_data()
+                    
+                    if hasattr(self.llm_provider, 'get_ref_document'):
+                        ref_document = self.llm_provider.get_ref_document()
+                    
                     if node_data:
                         # 노드 데이터와 함께 메시지 완료 업데이트
-                        self.chat_crud.update_ai_message_completed(ai_message_id, ai_response_content, node_data)
+                        self.chat_crud.update_ai_message_completed(ai_message_id, ai_response_content, node_data, ref_document)
                         # 노드 데이터 초기화
                         self.llm_provider.clear_node_data()
                     else:
-                        self.chat_crud.update_ai_message_completed(ai_message_id, ai_response_content)
+                        self.chat_crud.update_ai_message_completed(ai_message_id, ai_response_content, None, ref_document)
                 else:
                     # 일반 provider인 경우
                     self.chat_crud.update_ai_message_completed(ai_message_id, ai_response_content)

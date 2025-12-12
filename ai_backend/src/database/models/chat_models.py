@@ -46,6 +46,9 @@ class ChatMessage(Base):
     
     # External API 노드 처리 결과 저장용 (JSON)
     external_api_nodes = Column('EXTERNAL_API_NODES', JSON, nullable=True)
+    
+    # 참조 문서 정보 (agent__app 노드에서 추출한 content_* 값)
+    ref_document = Column('REF_DOCUMENT', Text, nullable=True)
 
 
 class MessageRating(Base):
